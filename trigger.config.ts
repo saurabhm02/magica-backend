@@ -1,8 +1,7 @@
 import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
-  // Get this from the Trigger.dev dashboard: Project settings → Project ref.
-  project: "<your-project-ref>",
+  project: "magica2.0",
   runtime: "node",
   logLevel: "log",
   maxDuration: 3600,
