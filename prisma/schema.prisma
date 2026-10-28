@@ -1,0 +1,97 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+
+enum MessageRole {
+  user
+  assistant
+  system
+  tool
+}
+
+enum MessageStatus {
+  pending
+  streaming
+  complete
+  failed
+  cancelled
+}
+
+enum RunStatus {
+  queued
+  running
+  waiting
+  succeeded
+  failed
+  cancelled
+}
+
+model User {
+  id          String     @id @default(cuid())
+  clerkUserId String     @unique
+  createdAt   DateTime   @default(now())
+  chats       Chat[]
+  runs        AgentRun[]
+}
+
+model Chat {
+  id        String     @id @default(cuid())
+  userId    String
+  user      User       @relation(fields: [userId], references: [id], onDelete: Restrict)
+  title     String     @default("New chat")
+  pinned    Boolean    @default(false)
+  deletedAt DateTime?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  messages  Message[]
+  runs      AgentRun[]
+
+  @@index([userId, pinned(sort: Desc), updatedAt(sort: Desc), id(sort: Desc)])
+}
+
+model Message {
+  id              String        @id @default(cuid())
+  chatId          String
+  chat            Chat          @relation(fields: [chatId], references: [id], onDelete: Restrict)
+  role            MessageRole
+  status          MessageStatus
+  content         Json 
+  clientRequestId String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  runsStarted     AgentRun[]    @relation("RunUserMessage")
+  runReply        AgentRun?     @relation("RunAssistantMessage")
+
+  @@unique([chatId, clientRequestId])
+  @@index([chatId, createdAt(sort: Desc), id(sort: Desc)])
+}
+
+model AgentRun {
+  id                 String    @id @default(cuid())
+  chatId             String
+  chat               Chat      @relation(fields: [chatId], references: [id], onDelete: Restrict)
+  userId             String
+  user               User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+  userMessageId      String 
+  userMessage        Message   @relation("RunUserMessage", fields: [userMessageId], references: [id], onDelete: Restrict)
+  assistantMessageId String?   @unique
+  assistantMessage   Message?  @relation("RunAssistantMessage", fields: [assistantMessageId], references: [id], onDelete: Restrict)
+  status             RunStatus @default(queued)
+  idempotencyKey     String    @unique
+  triggerRunId       String?   @unique
+  routedModel        String?
+  usage              Json? 
+  error              Json? 
+  startedAt          DateTime?
+  finishedAt         DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([chatId, createdAt])
+  @@index([userMessageId])
+}
