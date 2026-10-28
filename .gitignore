@@ -1,0 +1,24 @@
+# dependencies
+node_modules
+
+# next.js
+.next
+out
+next-env.d.ts
+
+# env files (only .env.example is committed)
+.env
+.env.*
+!.env.example
+
+# tools
+.trigger
+.vercel
+coverage
+dist
+*.tsbuildinfo
+
+# os / editor
+.DS_Store
+.idea
+.vscode
