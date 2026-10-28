@@ -1,0 +1,45 @@
+import { z } from "zod";
+import { SafeError } from "./errors";
+
+const TextBlock = z.object({ type: z.literal("text"), text: z.string() });
+
+const ThinkingBlock = z.object({ type: z.literal("thinking"), text: z.string() });
+
+const ReasoningBlock = z.object({ type: z.literal("reasoning"), text: z.string() });
+
+const ToolUseBlock = z.object({
+  type: z.literal("tool_use"),
+  id: z.string(),
+  name: z.string(),
+  input: z.record(z.string(), z.unknown()),
+});
+
+const ToolResultBlock = z.object({
+  type: z.literal("tool_result"),
+  toolUseId: z.string(),
+  output: z.unknown().optional(),
+  error: SafeError.optional(),
+});
+
+const CitationsBlock = z.object({
+  type: z.literal("citations"),
+  citations: z.array(z.object({ url: z.url(), title: z.string().optional() })),
+});
+
+const UsageBlock = z.object({
+  type: z.literal("usage"),
+  promptTokens: z.number().int().nonnegative(),
+  completionTokens: z.number().int().nonnegative(),
+  totalTokens: z.number().int().nonnegative(),
+});
+
+export const ContentBlock = z.discriminatedUnion("type", [
+  TextBlock,
+  ThinkingBlock,
+  ReasoningBlock,
+  ToolUseBlock,
+  ToolResultBlock,
+  CitationsBlock,
+  UsageBlock,
+]);
+export type ContentBlock = z.infer<typeof ContentBlock>;

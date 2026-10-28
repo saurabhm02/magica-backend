@@ -4,7 +4,7 @@ import { PrismaClient } from "@prisma/client";
 import ws from "ws";
 import { env } from "@/lib/env";
 
-// Neon's driver talks over WebSocket. Tested without `ws` on Node 24: queries hang, so keep it.
+
 neonConfig.webSocketConstructor = ws;
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
