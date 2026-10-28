@@ -62,7 +62,7 @@ save final assistant message, usage, settle credits (refund unused), mark run do
 | `modules/uploads` | Transloadit signature, webhook, attachment rows |
 | `modules/waitpoints` | create, respond (idempotent), expire |
 | `agent/loop.ts` | provider-neutral loop |
-| `agent/openrouter.ts` | `LlmProvider` interface + OpenRouter adapter |
+| `agent/llm.ts` | `streamChat()` — provider-neutral, talks to any OpenAI-compatible endpoint |
 | `agent/tools` | registry + tools |
 | `agent/skills` | skill registry + safe loader |
 | `agent/magica.ts` | Magica HTTP client (base URL from env) |
@@ -104,4 +104,4 @@ Why not npm package? For a 3-day trial, publishing a private package + auth on V
 
 All config in `src/lib/env.ts` validated by Zod at startup. Missing env → app fails fast with a clear message. See `.env.example`.
 
-Important ones: `DATABASE_URL`, `CLERK_SECRET_KEY`, `TRIGGER_SECRET_KEY`, `OPENROUTER_API_KEY`, `OPENROUTER_MODEL=openrouter/free`, `MAGICA_BASE_URL`, `MAGICA_API_KEY`, `TRANSLOADIT_KEY`, `TRANSLOADIT_SECRET`, `CLIENT_ORIGIN`, `STARTING_CREDITS`, `MAX_AGENT_TURNS`.
+Important ones: `DATABASE_URL`, `CLERK_SECRET_KEY`, `TRIGGER_SECRET_KEY`, `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL=openrouter/free`, `MAGICA_BASE_URL`, `MAGICA_API_KEY`, `TRANSLOADIT_KEY`, `TRANSLOADIT_SECRET`, `CLIENT_ORIGIN`, `STARTING_CREDITS`, `MAX_AGENT_TURNS`.

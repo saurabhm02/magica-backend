@@ -46,8 +46,9 @@ Fill every value. The app checks them at startup and tells you exactly which one
 | `DIRECT_URL` | Neon → Connect → turn pooling **off** (used only for migrations) |
 | `CLERK_SECRET_KEY` | Clerk dashboard → API keys |
 | `TRIGGER_SECRET_KEY` | Trigger.dev → project → API keys (dev) |
-| `OPENROUTER_API_KEY` | openrouter.ai → Keys |
-| `OPENROUTER_MODEL` | must be `openrouter/free` |
+| `LLM_API_KEY` | openrouter.ai → Keys |
+| `LLM_BASE_URL` | `https://openrouter.ai/api/v1` |
+| `LLM_MODEL` | must be `openrouter/free` |
 | `MAGICA_BASE_URL` / `MAGICA_API_KEY` | supplied for the trial |
 | `TRANSLOADIT_KEY` / `TRANSLOADIT_SECRET` | Transloadit → Credentials |
 | `CLIENT_ORIGIN` | frontend URL, e.g. `http://localhost:3000` |

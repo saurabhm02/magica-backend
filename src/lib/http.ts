@@ -2,10 +2,10 @@ import { randomUUID } from "node:crypto";
 import type { NextRequest } from "next/server";
 import type { z } from "zod";
 import { AppError, errorResponse } from "@/lib/errors";
+import type { RouteHandler } from "@/lib/types";
 
-type Handler<Ctx> = (req: NextRequest, ctx: Ctx, traceId: string) => Promise<Response>;
 
-export function route<Ctx>(handler: Handler<Ctx>) {
+export function route<Ctx>(handler: RouteHandler<Ctx>) {
   return async (req: NextRequest, ctx: Ctx) => {
     const traceId = randomUUID();
     try {

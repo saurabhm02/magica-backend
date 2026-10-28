@@ -1,14 +1,6 @@
-type LogContext = {
-  traceId?: string;
-  chatId?: string;
-  runId?: string;
-  messageId?: string;
-  [key: string]: unknown;
-};
+import type { LogContext, LogLevel } from "@/lib/types";
 
-type Level = "info" | "warn" | "error";
-
-function write(level: Level, message: string, context: LogContext) {
+function write(level: LogLevel, message: string, context: LogContext) {
   const line = JSON.stringify({ level, message, time: new Date().toISOString(), ...context });
   if (level === "error") console.error(line);
   else if (level === "warn") console.warn(line);
