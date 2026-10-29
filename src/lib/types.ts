@@ -3,9 +3,6 @@ import type OpenAI from "openai";
 import type { z } from "zod";
 import type { ErrorCode, SafeError } from "@/contracts/errors";
 
-// Plain TypeScript types used across the server.
-// Types made from a Zod schema stay next to their schema (src/contracts, cursor schemas).
-
 export type ToolCall = { id: string; name: string; arguments: string; order?: number };
 
 export type LlmMessage = OpenAI.Chat.Completions.ChatCompletionMessageParam;
@@ -84,6 +81,7 @@ export type TurnResult = { error?: SafeError; routedModel?: string; usage?: LlmU
 // HTTP
 export type RouteHandler<Ctx> = (req: NextRequest, ctx: Ctx, traceId: string) => Promise<Response>;
 export type ChatRouteContext = { params: Promise<{ chatId: string }> };
+export type RunRouteContext = { params: Promise<{ chatId: string; runId: string }> };
 
 // Logging
 export type LogLevel = "info" | "warn" | "error";

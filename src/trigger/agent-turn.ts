@@ -2,6 +2,7 @@ import { logger, metadata, streams, task } from "@trigger.dev/sdk";
 import type { Prisma } from "@prisma/client";
 import { streamChat } from "@/agent/llm";
 import { executeTurnTools } from "@/agent/run-tools";
+import { getSkillsPromptSummary } from "@/agent/skills/registry";
 import { getLlmTools } from "@/agent/tools/registry";
 import type { ContentBlock } from "@/contracts/content-blocks";
 import type { RunMetadata } from "@/contracts/run";
@@ -16,6 +17,7 @@ import {
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import type { AgentTurnPayload, LlmMessage, ToolCall, TurnResult } from "@/lib/types";
+import { refundLeakedHolds } from "@/modules/credits/credits";
 
 export const textStream = streams.define<string>({ id: TEXT_STREAM_ID });
 
@@ -26,7 +28,8 @@ export async function runAgentTurn(runId: string, traceId: string, signal = new 
   const run = await db.agentRun.findUniqueOrThrow({ where: { id: runId } });
   if (TERMINAL_RUN_STATUSES.includes(run.status)) return;
 
-  const thinkingStartedAt = new Date().toISOString();
+  const thinkingStartedMs = Date.now();
+  const thinkingStartedAt = new Date(thinkingStartedMs).toISOString();
   metadata.replace({ status: "thinking", thinkingStartedAt });
 
   const [prompt, reply] = await Promise.all([
@@ -49,14 +52,28 @@ export async function runAgentTurn(runId: string, traceId: string, signal = new 
   const updateWorkingMeta = () =>
     metadata.replace({ status: "working", thinkingStartedAt, tools: toolsMetadata, assets: assetsMetadata });
 
+  const onAbort = () => {
+    metadata.replace({
+      status: "stopping",
+      thinkingStartedAt,
+      tools: toolsMetadata,
+      assets: assetsMetadata,
+    });
+  };
+  signal.addEventListener("abort", onAbort, { once: true });
+
   try {
     for (let turn = 0; turn < env.MAX_AGENT_TURNS; turn++) {
+      if (signal.aborted) break;
       streamText = "";
       let isFirstTextTokenOfStep = true;
+      let firstTokenAt: number | null = null;
+      let firstToolCallAt: number | null = null;
       const turnToolCalls: ToolCall[] = [];
 
       for await (const event of streamChat(messages, signal, llmTools)) {
         if (event.type === "text-delta") {
+          if (!firstTokenAt) firstTokenAt = Date.now();
           if (isFirstTextTokenOfStep) {
             isFirstTextTokenOfStep = false;
             updateWorkingMeta();
@@ -70,6 +87,7 @@ export async function runAgentTurn(runId: string, traceId: string, signal = new 
             lastSavedAt = now;
           }
         } else if (event.type === "tool-call-delta") {
+          if (!firstToolCallAt) firstToolCallAt = Date.now();
           const tc = (turnToolCalls[event.index] ??= { id: "", name: "", arguments: "" });
           if (event.id) tc.id = event.id;
           if (event.name) tc.name += event.name;
@@ -83,6 +101,14 @@ export async function runAgentTurn(runId: string, traceId: string, signal = new 
           break;
         }
       }
+
+      logger.info("agent step timing", {
+        ...logContext,
+        turn,
+        msToFirstToken: firstTokenAt ? firstTokenAt - thinkingStartedMs : null,
+        msToFirstToolCall: firstToolCallAt ? firstToolCallAt - thinkingStartedMs : null,
+        toolCallsCount: turnToolCalls.length,
+      });
 
       if (streamText.trim()) contentBlocks.push({ type: "text", text: streamText });
       if (result.error || turnToolCalls.length === 0) break;
@@ -117,24 +143,58 @@ export async function runAgentTurn(runId: string, traceId: string, signal = new 
       contentBlocks.push(...exec.contentBlocks);
       messages.push(...exec.toolMessages);
 
+      if (exec.insufficientCreditsError) {
+        result.error = exec.insufficientCreditsError;
+        break;
+      }
+
       if (turn === env.MAX_AGENT_TURNS - 1 && !result.error) {
         result.error = { code: "MAX_TURNS", message: "Stopped after too many steps.", retryable: false };
       }
     }
   } catch (crash) {
-    logger.error("agent-turn crashed", { ...logContext, detail: String(crash) });
-    await finishRun(runId, reply.id, contentBlocks, streamText, { error: RUN_CRASHED_ERROR });
-    metadata.replace({ status: "failed", thinkingStartedAt, error: RUN_CRASHED_ERROR, tools: toolsMetadata, assets: assetsMetadata });
-    throw crash;
+    if (signal.aborted) {
+      logger.info("agent-turn aborted during execution", logContext);
+    } else {
+      logger.error("agent-turn crashed", { ...logContext, detail: String(crash) });
+      await refundLeakedHolds(runId).catch((e) => logger.error("refundLeakedHolds failed in crash handler", { ...logContext, detail: String(e) }));
+      const { chargedCredits } = await finishRun(runId, reply.id, contentBlocks, streamText, { error: RUN_CRASHED_ERROR });
+      metadata.replace({ status: "failed", thinkingStartedAt, error: RUN_CRASHED_ERROR, tools: toolsMetadata, assets: assetsMetadata, credits: chargedCredits });
+      throw crash;
+    }
   }
 
-  await finishRun(runId, reply.id, contentBlocks, streamText, result);
+  if (signal.aborted) {
+    await refundLeakedHolds(runId).catch((e) => logger.error("refundLeakedHolds failed in cancel handler", { ...logContext, detail: String(e) }));
+    await db.toolInvocation.updateMany({
+      where: { runId, status: { in: ["pending", "running"] } },
+      data: { status: "cancelled" },
+    });
+    for (const m of toolsMetadata) {
+      if (m.status === "pending" || m.status === "running") {
+        m.status = "cancelled";
+        m.finishedAt = new Date().toISOString();
+      }
+    }
+    const { chargedCredits } = await finishCancelledRun(runId, reply.id, contentBlocks, streamText);
+    metadata.replace({
+      status: "cancelled",
+      thinkingStartedAt,
+      tools: toolsMetadata,
+      assets: assetsMetadata,
+      credits: chargedCredits,
+    });
+    logger.info("agent-turn cancelled", { ...logContext, chargedCredits });
+    return;
+  }
+
+  const { chargedCredits } = await finishRun(runId, reply.id, contentBlocks, streamText, result);
   metadata.replace(
     result.error
-      ? { status: "failed", thinkingStartedAt, error: result.error, tools: toolsMetadata, assets: assetsMetadata }
-      : { status: "complete", thinkingStartedAt, tools: toolsMetadata, assets: assetsMetadata },
+      ? { status: "failed", thinkingStartedAt, error: result.error, tools: toolsMetadata, assets: assetsMetadata, credits: chargedCredits }
+      : { status: "complete", thinkingStartedAt, tools: toolsMetadata, assets: assetsMetadata, credits: chargedCredits },
   );
-  logger.info(result.error ? "agent-turn failed" : "agent-turn succeeded", { ...logContext, code: result.error?.code });
+  logger.info(result.error ? "agent-turn failed" : "agent-turn succeeded", { ...logContext, code: result.error?.code, chargedCredits });
 }
 
 export const agentTurn = task({
@@ -154,7 +214,11 @@ async function buildPrompt(chatId: string, userMessageId: string): Promise<LlmMe
     .reverse()
     .map((m) => ({ role: m.role === "assistant" ? ("assistant" as const) : ("user" as const), content: textOf(m.content) }))
     .filter((m) => m.content.trim() !== "");
-  return [{ role: "system", content: SYSTEM_PROMPT }, ...history];
+  const skillsSummary = getSkillsPromptSummary();
+  const systemContent = skillsSummary
+    ? `${SYSTEM_PROMPT}\n\n# Available Skills\nLoad these on-demand using load_skill when the user's task matches:\n${skillsSummary}`
+    : SYSTEM_PROMPT;
+  return [{ role: "system", content: systemContent }, ...history];
 }
 
 async function startReply(runId: string, chatId: string) {
@@ -172,14 +236,22 @@ function savePartialContent(messageId: string, contentBlocks: ContentBlock[], pa
   return db.message.update({ where: { id: messageId }, data: { content: content as unknown as Prisma.InputJsonValue } });
 }
 
-function finishRun(runId: string, messageId: string, blocks: ContentBlock[], partial: string, res: TurnResult) {
+async function finishRun(runId: string, messageId: string, blocks: ContentBlock[], partial: string, res: TurnResult) {
+  await refundLeakedHolds(runId).catch((e) => logger.error("refundLeakedHolds failed in finishRun", { runId, detail: String(e) }));
   const content = [...blocks];
   if (partial.trim()) {
     if (content[content.length - 1]?.type !== "text") content.push({ type: "text", text: partial });
   } else if (content.length === 0) {
     content.push({ type: "text", text: "" });
   }
-  return db.$transaction([
+
+  const toolAgg = await db.toolInvocation.aggregate({
+    where: { runId },
+    _sum: { credits: true },
+  });
+  const chargedCredits = toolAgg._sum.credits ?? 0n;
+
+  await db.$transaction([
     db.message.update({
       where: { id: messageId },
       data: { status: res.error ? "failed" : "complete", content: content as unknown as Prisma.InputJsonValue },
@@ -191,10 +263,45 @@ function finishRun(runId: string, messageId: string, blocks: ContentBlock[], par
         error: res.error ? (res.error as unknown as Prisma.InputJsonValue) : undefined,
         routedModel: res.routedModel,
         usage: res.usage ? (res.usage as unknown as Prisma.InputJsonValue) : undefined,
+        chargedCredits,
         finishedAt: new Date(),
       },
     }),
   ]);
+
+  return { chargedCredits: Number(chargedCredits) };
+}
+
+async function finishCancelledRun(runId: string, messageId: string, blocks: ContentBlock[], partial: string) {
+  const content = [...blocks];
+  if (partial.trim()) {
+    if (content[content.length - 1]?.type !== "text") content.push({ type: "text", text: partial });
+  } else if (content.length === 0) {
+    content.push({ type: "text", text: "" });
+  }
+
+  const toolAgg = await db.toolInvocation.aggregate({
+    where: { runId, status: "succeeded" },
+    _sum: { credits: true },
+  });
+  const chargedCredits = toolAgg._sum.credits ?? 0n;
+
+  await db.$transaction([
+    db.message.update({
+      where: { id: messageId },
+      data: { status: "cancelled", content: content as unknown as Prisma.InputJsonValue },
+    }),
+    db.agentRun.update({
+      where: { id: runId },
+      data: {
+        status: "cancelled",
+        chargedCredits,
+        finishedAt: new Date(),
+      },
+    }),
+  ]);
+
+  return { chargedCredits: Number(chargedCredits) };
 }
 
 function textOf(content: unknown): string {

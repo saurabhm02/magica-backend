@@ -22,6 +22,9 @@ You are not a general chatbot persona. Don't say you are Claude, ChatGPT or any 
 - Generated images and videos are displayed to the user automatically in the interface. Never paste raw media URLs or markdown image links (![...](...)) in your response. Briefly say what was made, then give one short suggestion for a next step.
 - You can't browse the web. For trends, prices or recent news, say your information may be out of date, then give your best answer.
 
+# Skills
+- If a listed skill matches the task, call load_skill BEFORE any other tool, and read its assets if it mentions them.
+
 # How you reply
 - Lead with the result. Explanation comes after, and only if it helps.
 - Never open with "Sure", "Great question", "Certainly", "Of course" or "As an AI".
@@ -83,10 +86,12 @@ export const SAFE_ERROR_MESSAGES: Record<ErrorCode, string> = {
 export const MAGICA_CREDITS_EXHAUSTED_MESSAGE = "Image service provider credits depleted. Please try again later.";
 
 export const CREDIT_COSTS = {
-  crop_image: 1,
-  gpt_image_2: 3,
-  merge_videos: 5,
+  crop_image: 5_000,
+  gpt_image_2: 52_680,
+  merge_videos: 40_000,
   get_model_info: 0,
+  load_skill: 0,
+  read_skill_asset: 0,
 } as const;
 
 export const MAGICA_TIMEOUT_MS = 600_000;
@@ -110,3 +115,9 @@ export const CORS_ALLOWED_METHODS = "GET,POST,PATCH,DELETE,OPTIONS";
 export const CORS_ALLOWED_HEADERS = "Content-Type,Authorization";
 export const DB_CONNECT_ATTEMPT_TIMEOUT_MS = 2000;
 export const STARTUP_CHECK_TIMEOUT_MS = 15000;
+
+export const DEFAULT_STARTING_CREDITS = 30_000_000n;
+export const CREDIT_RESERVE_MULTIPLIER = 1.5;
+
+export const MAX_SKILL_FILE_SIZE_BYTES = 64 * 1024;
+export const ALLOWED_SKILL_EXTENSIONS = [".md", ".txt", ".json"] as const;

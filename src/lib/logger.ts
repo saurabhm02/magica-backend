@@ -1,7 +1,10 @@
 import type { LogContext, LogLevel } from "@/lib/types";
 
 function write(level: LogLevel, message: string, context: LogContext) {
-  const line = JSON.stringify({ level, message, time: new Date().toISOString(), ...context });
+  const line = JSON.stringify(
+    { level, message, time: new Date().toISOString(), ...context },
+    (_, v) => (typeof v === "bigint" ? v.toString() : v),
+  );
   if (level === "error") console.error(line);
   else if (level === "warn") console.warn(line);
   else console.log(line);

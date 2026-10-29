@@ -39,13 +39,47 @@ export function buildGptImage2Payload(input: GptImage2Input): {
   return { subModelId, params };
 }
 
+const GPT_IMAGE_TIERS: Record<string, number> = {
+  "High:1024x1024": 210_720,
+  "High:1536x1024": 164_640,
+  "High:1024x1536": 164_640,
+  "High:2048x2048": 428_160,
+  "High:2048x1152": 169_500,
+  "High:3840x2160": 400_260,
+  "High:2160x3840": 400_260,
+  "Medium:1024x1024": 52_680,
+  "Medium:1536x1024": 41_160,
+  "Medium:1024x1536": 41_160,
+  "Medium:2048x2048": 107_040,
+  "Medium:2048x1152": 42_390,
+  "Medium:3840x2160": 100_080,
+  "Medium:2160x3840": 100_080,
+  "Low:1024x1024": 5_880,
+  "Low:1536x1024": 4_740,
+  "Low:1024x1536": 4_740,
+  "Low:2048x2048": 11_910,
+  "Low:2048x1152": 4_710,
+  "Low:3840x2160": 11_130,
+  "Low:2160x3840": 11_130,
+};
+
+export function estimateGptImage2Credits(input?: Partial<GptImage2Input>): number {
+  if (!input) return CREDIT_COSTS.gpt_image_2;
+  const quality = input.quality ?? "Medium";
+  const size = !input.size || input.size === "Auto" ? "1024x1024" : input.size;
+  const key = `${quality}:${size}`;
+  const base = GPT_IMAGE_TIERS[key] ?? CREDIT_COSTS.gpt_image_2;
+  const count = input.n ?? 1;
+  return base * count;
+}
+
 export const gptImage2Tool: MagicaTool<GptImage2Input, GptImage2Output> = {
   name: "gpt_image_2",
   description:
     "Generate a new image from a text prompt or edit an existing image using OpenAI's GPT Image 2 model. Default quality is Medium (use High only when user asks for high/best quality), default size is 1024x1024, default n is 1. To edit, provide uploadedImages.",
   inputSchema: GptImage2Input,
   renderKey: "image-result",
-  estimateCredits: () => CREDIT_COSTS.gpt_image_2,
+  estimateCredits: (input) => estimateGptImage2Credits(input),
   assets: (output) => output.images.map((url) => ({ type: "image", url })),
   describe: (input) => {
     const prompt = input?.prompt || "";

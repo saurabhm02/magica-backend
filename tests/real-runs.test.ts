@@ -41,6 +41,8 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await db.creditLedger.deleteMany({ where: { userId } });
+  await db.runSkill.deleteMany({ where: { run: { userId } } });
   await db.toolInvocation.deleteMany({ where: { run: { userId } } });
   await db.agentRun.deleteMany({ where: { userId } });
   await db.message.deleteMany({ where: { chat: { userId } } });
@@ -178,6 +180,70 @@ describe.skipIf(!process.env.RUN_REAL_MAGICA_TESTS)(
     expect(invs.length).toBeGreaterThanOrEqual(2);
     expect(invs.some((i) => i.toolName === "gpt_image_2" && i.status === "succeeded")).toBe(true);
     expect(invs.some((i) => i.toolName === "crop_image" && i.status === "succeeded")).toBe(true);
+    expect(finalRun.status).toBe("succeeded");
+  }, 240_000);
+
+  it("runs coffee mug product photo and instagram story crop with skills", async () => {
+    const chat = await createChat(userId);
+    logEvent("CREATED CHAT FOR COFFEE MUG RUN", { chatId: chat.id });
+
+    let sendMs = 0;
+    let firstStepCardMs = 0;
+    let firstImageMs = 0;
+
+    vi.spyOn(metadata, "replace").mockImplementation((meta) => {
+      logEvent("METADATA_REPLACE", meta);
+      const m = meta as { tools?: unknown[]; assets?: unknown[] };
+      if (m.tools && m.tools.length > 0 && !firstStepCardMs) {
+        firstStepCardMs = Date.now();
+      }
+      if (m.assets && m.assets.length > 0 && !firstImageMs) {
+        firstImageMs = Date.now();
+      }
+    });
+
+    sendMs = Date.now();
+    const sent = await sendMessage(userId, chat.id, {
+      content: "make a product photo of a coffee mug, then crop it for an Instagram story",
+      clientRequestId: randomUUID(),
+      planMode: false,
+    });
+    logEvent("SENT MESSAGE, STARTING AGENT TURN", { runId: sent.run.id });
+
+    await runAgentTurn(sent.run.id, "real_coffee_mug_skills_trace");
+    logEvent("AGENT TURN FINISHED", { runId: sent.run.id });
+
+    const invs = await db.toolInvocation.findMany({
+      where: { runId: sent.run.id },
+      orderBy: { order: "asc" },
+    });
+    const runSkills = await db.runSkill.findMany({
+      where: { runId: sent.run.id },
+    });
+
+    console.log("REAL COFFEE MUG RUN INVOCATIONS:", JSON.stringify(invs.map((i) => ({ order: i.order, tool: i.toolName, status: i.status, input: i.input, output: i.output }))));
+    console.log("RUN SKILLS RECORDED IN DB:", JSON.stringify(runSkills.map((s) => s.skillName)));
+
+    const finalRun = await db.agentRun.findUniqueOrThrow({
+      where: { id: sent.run.id },
+      include: { assistantMessage: true },
+    });
+    console.log("FINAL ASSISTANT MESSAGE CONTENT:", finalRun.assistantMessage?.content);
+
+    const secondsToFirstStepCard = ((firstStepCardMs - sendMs) / 1000).toFixed(1);
+    const secondsToFirstImage = firstImageMs ? ((firstImageMs - sendMs) / 1000).toFixed(1) : "N/A";
+    const failedToolCallsCount = invs.filter((i) => i.status === "failed").length;
+    const cropInv = invs.find((i) => i.toolName === "crop_image");
+
+    console.log("=== REAL RUN PHASE 3 MEASUREMENTS ===");
+    console.log(`Did it load the skills, and which ones? ${runSkills.map((s) => s.skillName).join(", ") || "None"}`);
+    console.log(`What crop size / parameters did it use? ${JSON.stringify(cropInv?.input)}`);
+    console.log(`How many tool calls failed? ${failedToolCallsCount}`);
+    console.log(`Seconds from send to the first step card: ${secondsToFirstStepCard}s`);
+    console.log(`Seconds to the first image: ${secondsToFirstImage}s`);
+    console.log("=====================================");
+
+    expect(invs.length).toBeGreaterThanOrEqual(2);
     expect(finalRun.status).toBe("succeeded");
   }, 240_000);
 });

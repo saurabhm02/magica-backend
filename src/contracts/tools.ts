@@ -85,6 +85,32 @@ export const GetModelInfoOutput = z.object({
 });
 export type GetModelInfoOutput = z.infer<typeof GetModelInfoOutput>;
 
+export const LoadSkillInput = z.object({
+  name: z.string().min(1).describe("The name of the skill to load (e.g. product-photo, social-crop, video-montage)"),
+});
+export type LoadSkillInput = z.infer<typeof LoadSkillInput>;
+
+export const LoadSkillOutput = z.object({
+  name: z.string(),
+  content: z.string(),
+  contentHash: z.string(),
+});
+export type LoadSkillOutput = z.infer<typeof LoadSkillOutput>;
+
+export const ReadSkillAssetInput = z.object({
+  skill: z.string().min(1).describe("The name of the skill the asset belongs to (e.g. social-crop)"),
+  path: z.string().min(1).describe("The relative filename of the asset within the skill directory (e.g. dimensions.json)"),
+});
+export type ReadSkillAssetInput = z.infer<typeof ReadSkillAssetInput>;
+
+export const ReadSkillAssetOutput = z.object({
+  skill: z.string(),
+  path: z.string(),
+  content: z.string(),
+  contentHash: z.string(),
+});
+export type ReadSkillAssetOutput = z.infer<typeof ReadSkillAssetOutput>;
+
 export const MagicaRunSuccess = z.object({
   ok: z.literal(true),
   output: z.record(z.string(), z.unknown()),

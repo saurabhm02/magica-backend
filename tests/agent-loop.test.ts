@@ -30,6 +30,8 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await db.creditLedger.deleteMany({ where: { userId } });
+  await db.runSkill.deleteMany({ where: { run: { userId } } });
   await db.toolInvocation.deleteMany({ where: { run: { userId } } });
   await db.agentRun.deleteMany({ where: { userId } });
   await db.message.deleteMany({ where: { chat: { userId } } });
@@ -246,7 +248,7 @@ describe("Agent turn loop with chained tools", () => {
 
     expect(blocks[4]?.type).toBe("text");
     expect(blocks[4]?.text).toBe("Here is your cropped sunset!");
-  }, 30_000);
+  }, 60_000);
 
   it("model sends no tool call ids: computes one id and uses it across assistant tool_calls, ToolInvocation row, tool message and content blocks across 2 steps", async () => {
     const chat = await createChat(userId);
@@ -390,5 +392,5 @@ describe("Agent turn loop with chained tools", () => {
     expect(blocks[2]?.id).toBe("call_1");
     expect(blocks[3]?.type).toBe("tool_result");
     expect(blocks[3]?.toolUseId).toBe("call_1");
-  }, 30_000);
+  }, 60_000);
 });

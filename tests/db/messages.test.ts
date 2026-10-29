@@ -19,6 +19,7 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
+  await db.creditLedger.deleteMany({ where: { userId } });
   await db.agentRun.deleteMany({ where: { userId } });
   await db.message.deleteMany({ where: { chat: { userId } } });
   await db.chat.deleteMany({ where: { userId } });

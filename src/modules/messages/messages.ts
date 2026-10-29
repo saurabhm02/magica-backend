@@ -60,7 +60,7 @@ export async function sendMessage(userId: string, chatId: string, body: SendMess
       });
       await tx.chat.update({ where: { id: chatId }, data: { updatedAt: new Date(), ...(title && { title }) } });
       return [message, run] as const;
-    });
+    }, { timeout: 20_000, maxWait: 15_000 });
     return { message, run };
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {

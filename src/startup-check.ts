@@ -1,5 +1,6 @@
 import { inspect } from "node:util";
 import { runs } from "@trigger.dev/sdk";
+import { loadSkillsRegistry } from "@/agent/skills/registry";
 import { STARTUP_CHECK_TIMEOUT_MS } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
@@ -11,6 +12,9 @@ export async function checkConnections() {
 
     await withTimeout(runs.list({ limit: 1 }), "trigger.dev");
     logger.info("trigger.dev connected");
+
+    const skills = loadSkillsRegistry();
+    logger.info(`skills registry loaded (${skills.size} skills)`);
   } catch (error) {
     logger.error("startup check failed, server not started", { error: inspect(error, { depth: 2 }) });
     process.exit(1);

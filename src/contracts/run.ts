@@ -58,5 +58,6 @@ export const RunMetadata = z.object({
   assets: z.array(RunMetadataAsset).optional(),
   waitpoint: RunMetadataWaitpoint.optional(),
   error: SafeError.optional(),
+  credits: z.number().optional(),
 });
 export type RunMetadata = z.infer<typeof RunMetadata>;

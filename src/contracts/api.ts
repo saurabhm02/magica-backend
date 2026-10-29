@@ -14,6 +14,31 @@ export const MeResponse = z.object({
 });
 export type MeResponse = z.infer<typeof MeResponse>;
 
+export const LedgerType = z.enum(["grant", "reserve", "settle", "refund"]);
+export type LedgerType = z.infer<typeof LedgerType>;
+
+export const CreditBalanceResponse = z.object({
+  balance: z.number(),
+});
+export type CreditBalanceResponse = z.infer<typeof CreditBalanceResponse>;
+
+export const CreditLedgerItem = z.object({
+  id: z.string(),
+  type: LedgerType,
+  amount: z.number(),
+  balanceAfter: z.number(),
+  runId: z.string().nullable().optional(),
+  toolInvocationId: z.string().nullable().optional(),
+  createdAt: z.iso.datetime(),
+});
+export type CreditLedgerItem = z.infer<typeof CreditLedgerItem>;
+
+export const ListLedgerQuery = CursorQuery;
+export type ListLedgerQuery = z.infer<typeof ListLedgerQuery>;
+
+export const ListLedgerResponse = Page(CreditLedgerItem);
+export type ListLedgerResponse = z.infer<typeof ListLedgerResponse>;
+
 export const ListChatsQuery = CursorQuery.extend({
   q: z.string().optional(),
 });
@@ -70,3 +95,19 @@ export const RunResponse = z.object({
   updatedAt: z.iso.datetime(),
 });
 export type RunResponse = z.infer<typeof RunResponse>;
+
+export const ActiveRunResponse = z
+  .object({
+    runId: z.string(),
+    triggerRunId: z.string(),
+    accessToken: z.string(),
+    status: RunStatus,
+  })
+  .nullable();
+export type ActiveRunResponse = z.infer<typeof ActiveRunResponse>;
+
+export const CancelRunResponse = z.object({
+  runId: z.string(),
+  status: RunStatus,
+});
+export type CancelRunResponse = z.infer<typeof CancelRunResponse>;

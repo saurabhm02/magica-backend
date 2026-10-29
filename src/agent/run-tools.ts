@@ -1,10 +1,11 @@
 import type { Prisma } from "@prisma/client";
+import { runs } from "@trigger.dev/sdk";
 import type { z } from "zod";
 import { getTool } from "@/agent/tools/registry";
 import type { ContentBlock } from "@/contracts/content-blocks";
 import type { SafeError } from "@/contracts/errors";
 import type { RunMetadata } from "@/contracts/run";
-import { GENERIC_SAFE_MESSAGE, SAFE_ERROR_MESSAGES } from "@/lib/constants";
+import { CREDIT_RESERVE_MULTIPLIER, GENERIC_SAFE_MESSAGE, SAFE_ERROR_MESSAGES } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { AppError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
@@ -16,6 +17,7 @@ import {
   type ToolCall,
   type ToolContext,
 } from "@/lib/types";
+import { refundCredits, reserveCredits, settleCredits } from "@/modules/credits/credits";
 import { magicaRun } from "@/trigger/magica-run";
 
 type ToolMeta = NonNullable<RunMetadata["tools"]>[number];
@@ -35,6 +37,7 @@ export type ExecuteTurnToolsParams = {
 export type ExecuteTurnToolsResult = {
   contentBlocks: ContentBlock[];
   toolMessages: LlmMessage[];
+  insufficientCreditsError?: SafeError;
 };
 
 function formatZodError(toolName: string, error: z.ZodError): string {
@@ -60,13 +63,18 @@ function extractAssets(tool: Tool, output: unknown, toolInvocationId: string, as
 export async function executeTurnTools(params: ExecuteTurnToolsParams): Promise<ExecuteTurnToolsResult> {
   const { runId, userId, traceId, signal, toolCalls, toolsMetadata, assetsMetadata, onMetadataChange } = params;
 
+  if (signal.aborted) {
+    return { contentBlocks: [], toolMessages: [] };
+  }
+
   const prepared = await Promise.all(
     toolCalls.map(async (tc, index) => {
       let rawInput: Record<string, unknown> = {};
       try {
         rawInput = tc.arguments ? JSON.parse(tc.arguments) : {};
       } catch {
-        // malformed json
+        //noting for now
+        console.log("Error while prepareing the tools");
       }
 
       const tool = getTool(tc.name);
@@ -123,7 +131,11 @@ export async function executeTurnTools(params: ExecuteTurnToolsParams): Promise<
     tool: MagicaTool;
     params: Record<string, unknown>;
     subModelId?: string;
+    estimate: number;
+    reserveAmount: number;
   }> = [];
+
+  let insufficientCreditsError: SafeError | undefined;
 
   for (const p of prepared) {
     const { tc, rawInput, record, tool, order } = p;
@@ -150,13 +162,48 @@ export async function executeTurnTools(params: ExecuteTurnToolsParams): Promise<
       continue;
     }
 
+    const estimate = tool.estimateCredits(parsed.data);
+    const reserveAmount = Math.round(estimate * CREDIT_RESERVE_MULTIPLIER);
+
+    try {
+      if (reserveAmount > 0) {
+        await reserveCredits({
+          userId,
+          runId,
+          toolInvocationId: record.id,
+          amount: reserveAmount,
+        });
+      }
+    } catch (err) {
+      if (err instanceof AppError && err.code === "INSUFFICIENT_CREDITS") {
+        logger.warn("insufficient credits for tool", { runId, toolInvocationId: record.id, name: tc.name });
+        const toolError: SafeError = { code: "INSUFFICIENT_CREDITS", message: err.message, retryable: false };
+        await db.toolInvocation.update({
+          where: { id: record.id },
+          data: { status: "failed", error: toolError as unknown as Prisma.InputJsonValue },
+        });
+        const meta = toolsMetadata.find((m) => m.id === record.id);
+        if (meta) {
+          meta.status = "failed";
+          meta.finishedAt = new Date().toISOString();
+        }
+        results.push({ tc, rawInput, order, toolError, desc: p.desc });
+        insufficientCreditsError = toolError;
+        break;
+      }
+      throw err;
+    }
+
     if (isMagicaTool(tool)) {
       try {
         const subModelId = tool.magica.subModelId?.(parsed.data);
         const inputParams = tool.magica.buildInput(parsed.data);
-        magicaBatch.push({ item: p, tool, params: inputParams, subModelId });
+        magicaBatch.push({ item: p, tool, params: inputParams, subModelId, estimate, reserveAmount });
       } catch (err) {
         logger.error("tool buildInput failed", { runId, toolInvocationId: record.id, detail: String(err) });
+        if (reserveAmount > 0) {
+          await refundCredits({ userId, runId, toolInvocationId: record.id, amount: reserveAmount });
+        }
         const toolError: SafeError =
           err instanceof AppError
             ? { code: err.code, message: err.message, retryable: err.retryable }
@@ -174,21 +221,37 @@ export async function executeTurnTools(params: ExecuteTurnToolsParams): Promise<
         const ctx: ToolContext = { runId, userId, toolInvocationId: record.id, signal, traceId, order };
         const output = await tool.execute(parsed.data, ctx);
         const durationMs = Date.now() - startTime;
-        const credits = tool.estimateCredits(parsed.data);
+        if (reserveAmount > 0 || estimate > 0) {
+          await settleCredits({
+            userId,
+            runId,
+            toolInvocationId: record.id,
+            estimate: reserveAmount,
+            actualCreditUsed: estimate,
+          });
+        }
         await db.toolInvocation.update({
           where: { id: record.id },
-          data: { status: "succeeded", output: output as Prisma.InputJsonValue, durationMs },
+          data: { status: "succeeded", output: output as Prisma.InputJsonValue, durationMs, credits: BigInt(estimate) },
         });
         if (meta) {
           meta.status = "succeeded";
           meta.finishedAt = new Date().toISOString();
-          meta.credits = credits;
+          meta.credits = estimate;
         }
         extractAssets(tool, output, record.id, assetsMetadata);
-        results.push({ tc, rawInput, order, output, credits, durationMs, desc: p.desc });
+        results.push({ tc, rawInput, order, output, credits: estimate, durationMs, desc: p.desc });
       } catch (err) {
         const durationMs = Date.now() - startTime;
         logger.error("local tool failed", { runId, toolInvocationId: record.id, detail: String(err) });
+        if (reserveAmount > 0) {
+          await refundCredits({
+            userId,
+            runId,
+            toolInvocationId: record.id,
+            amount: reserveAmount,
+          });
+        }
         const toolError: SafeError =
           err instanceof AppError
             ? { code: err.code, message: err.message, retryable: err.retryable }
@@ -204,6 +267,31 @@ export async function executeTurnTools(params: ExecuteTurnToolsParams): Promise<
         results.push({ tc, rawInput, order, toolError, durationMs, desc: p.desc });
       }
     }
+  }
+
+  if (insufficientCreditsError && magicaBatch.length > 0) {
+    for (const b of magicaBatch) {
+      if (b.reserveAmount > 0) {
+        await refundCredits({ userId, runId, toolInvocationId: b.item.record.id, amount: b.reserveAmount });
+      }
+      await db.toolInvocation.update({
+        where: { id: b.item.record.id },
+        data: { status: "failed", error: insufficientCreditsError as unknown as Prisma.InputJsonValue },
+      });
+      const m = toolsMetadata.find((meta) => meta.id === b.item.record.id);
+      if (m) {
+        m.status = "failed";
+        m.finishedAt = new Date().toISOString();
+      }
+      results.push({
+        tc: b.item.tc,
+        rawInput: b.item.rawInput,
+        order: b.item.order,
+        toolError: insufficientCreditsError,
+        desc: b.item.desc,
+      });
+    }
+    magicaBatch.length = 0;
   }
 
   if (magicaBatch.length > 0) {
@@ -230,6 +318,13 @@ export async function executeTurnTools(params: ExecuteTurnToolsParams): Promise<
     let batchRuns: Array<{ id: string; ok: boolean; output?: Record<string, unknown>; creditUsed?: number; error?: unknown }>;
     try {
       const batch = await magicaRun.batchTriggerAndWait(batchPayloads);
+      if (signal.aborted && batch?.runs) {
+        for (const r of batch.runs) {
+          if (!r.ok) {
+            runs.cancel(r.id).catch(() => {});
+          }
+        }
+      }
       batchRuns = batch.runs.map((r) => {
         if (!r.ok) {
           return { id: r.id, ok: false, error: r.error };
@@ -255,7 +350,7 @@ export async function executeTurnTools(params: ExecuteTurnToolsParams): Promise<
 
     for (const [i, batchItem] of magicaBatch.entries()) {
       const runRes = batchRuns[i];
-      const { item, tool } = batchItem;
+      const { item, tool, estimate, reserveAmount } = batchItem;
       const meta = toolsMetadata.find((m) => m.id === item.record.id);
 
       let output: unknown;
@@ -289,8 +384,31 @@ export async function executeTurnTools(params: ExecuteTurnToolsParams): Promise<
         }
       }
 
-      const creditUsed = runRes?.ok && typeof runRes.creditUsed === "number" ? runRes.creditUsed : undefined;
-      const finalStatus = toolError ? "failed" : "succeeded";
+      const creditUsed = runRes?.ok && typeof runRes.creditUsed === "number" ? runRes.creditUsed : (output ? estimate : 0);
+      const isCancelled = signal.aborted && (!runRes || !runRes.ok);
+      const finalStatus = isCancelled ? "cancelled" : toolError ? "failed" : "succeeded";
+
+      if (finalStatus === "succeeded") {
+        if (reserveAmount > 0 || creditUsed > 0) {
+          await settleCredits({
+            userId,
+            runId,
+            toolInvocationId: item.record.id,
+            estimate: reserveAmount,
+            actualCreditUsed: creditUsed,
+          });
+        }
+      } else {
+        if (reserveAmount > 0) {
+          await refundCredits({
+            userId,
+            runId,
+            toolInvocationId: item.record.id,
+            amount: reserveAmount,
+          });
+        }
+      }
+
       const savedOutput =
         output && typeof output === "object"
           ? ({ ...(output as Record<string, unknown>), ...(creditUsed !== undefined ? { creditUsed } : {}) } as Prisma.InputJsonValue)
@@ -303,13 +421,14 @@ export async function executeTurnTools(params: ExecuteTurnToolsParams): Promise<
           output: output ? savedOutput : undefined,
           error: toolError ? (toolError as unknown as Prisma.InputJsonValue) : undefined,
           durationMs,
+          credits: finalStatus === "succeeded" ? BigInt(creditUsed) : 0n,
         },
       });
 
       if (meta) {
         meta.status = finalStatus;
         meta.finishedAt = new Date().toISOString();
-        if (creditUsed !== undefined) {
+        if (finalStatus === "succeeded") {
           meta.credits = creditUsed;
         }
       }
@@ -324,7 +443,7 @@ export async function executeTurnTools(params: ExecuteTurnToolsParams): Promise<
         order: item.order,
         output,
         toolError,
-        credits: creditUsed,
+        credits: finalStatus === "succeeded" ? creditUsed : undefined,
         durationMs,
         desc: item.desc,
       });
@@ -365,5 +484,5 @@ export async function executeTurnTools(params: ExecuteTurnToolsParams): Promise<
 
   onMetadataChange();
 
-  return { contentBlocks, toolMessages };
+  return { contentBlocks, toolMessages, insufficientCreditsError };
 }

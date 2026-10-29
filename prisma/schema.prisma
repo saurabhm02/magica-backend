@@ -39,12 +39,21 @@ enum ToolStatus {
   cancelled
 }
 
+enum LedgerType {
+  grant
+  reserve
+  settle
+  refund
+}
+
 model User {
-  id          String     @id @default(cuid())
-  clerkUserId String     @unique
-  createdAt   DateTime   @default(now())
-  chats       Chat[]
-  runs        AgentRun[]
+  id            String         @id @default(cuid())
+  clerkUserId   String         @unique
+  creditBalance BigInt         @default(30000000)
+  createdAt     DateTime       @default(now())
+  chats         Chat[]
+  runs          AgentRun[]
+  ledger        CreditLedger[]
 }
 
 model Chat {
@@ -90,6 +99,7 @@ model AgentRun {
   assistantMessageId String?   @unique
   assistantMessage   Message?  @relation("RunAssistantMessage", fields: [assistantMessageId], references: [id], onDelete: Restrict)
   status             RunStatus @default(queued)
+  chargedCredits     BigInt    @default(0)
   idempotencyKey     String    @unique
   triggerRunId       String?   @unique
   routedModel        String?
@@ -100,6 +110,8 @@ model AgentRun {
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
   tools              ToolInvocation[]
+  skills             RunSkill[]
+  ledger             CreditLedger[]
 
   @@index([chatId, createdAt])
   @@index([userMessageId])
@@ -116,12 +128,46 @@ model ToolInvocation {
   input          Json
   output         Json?
   magicaRunId    String?
+  credits        BigInt         @default(0)
   durationMs     Int?
   error          Json?
   idempotencyKey String         @unique
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
+  ledger         CreditLedger[]
 
   @@unique([runId, toolCallId])
   @@index([runId, order])
+}
+
+model RunSkill {
+  id          String   @id @default(cuid())
+  runId       String
+  run         AgentRun @relation(fields: [runId], references: [id], onDelete: Restrict)
+  skillName   String
+  contentHash String
+  content     String
+  loadedAt    DateTime @default(now())
+
+  @@unique([runId, skillName])
+  @@index([runId])
+}
+
+model CreditLedger {
+  id               String          @id @default(cuid())
+  userId           String
+  user             User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  runId            String?
+  run              AgentRun?       @relation(fields: [runId], references: [id], onDelete: Restrict)
+  toolInvocationId String?
+  toolInvocation   ToolInvocation? @relation(fields: [toolInvocationId], references: [id], onDelete: Restrict)
+  type             LedgerType
+  amount           BigInt
+  balanceAfter     BigInt
+  idempotencyKey   String          @unique
+  createdAt        DateTime        @default(now())
+
+  @@index([userId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([runId])
+  @@index([toolInvocationId])
 }
