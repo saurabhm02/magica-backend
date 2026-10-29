@@ -1,4 +1,6 @@
 allowBuilds:
+  '@depot/cli': false
+  esbuild: false
   '@prisma/engines': true
   prisma: true
   unrs-resolver: true

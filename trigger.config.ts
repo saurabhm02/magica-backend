@@ -1,10 +1,11 @@
 import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
-  project: "magica2.0",
+  project: "proj_qvsbemkhzhryzljhzrea",
   runtime: "node",
   logLevel: "log",
   maxDuration: 3600,
+  processKeepAlive: true,
   retries: {
     enabledInDev: true,
     default: {

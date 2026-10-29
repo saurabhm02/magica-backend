@@ -1,3 +1,4 @@
+import { inspect } from "node:util";
 import { NextResponse } from "next/server";
 import type { ErrorCode, ErrorResponse } from "@/contracts/errors";
 import { GENERIC_SAFE_MESSAGE, HTTP_STATUS_BY_ERROR_CODE } from "@/lib/constants";
@@ -18,7 +19,7 @@ export function errorResponse(error: unknown, traceId: string): NextResponse<Err
   if (!(error instanceof AppError)) {
     logger.error("unhandled error", {
       traceId,
-      error: error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : String(error),
+      error: error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : inspect(error, { depth: 2 }), // e.g. the DB driver throws an ErrorEvent, not an Error
     });
   }
   const appError = error instanceof AppError ? error : new AppError("INTERNAL", GENERIC_SAFE_MESSAGE);

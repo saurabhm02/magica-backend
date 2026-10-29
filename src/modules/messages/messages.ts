@@ -36,9 +36,10 @@ export async function listMessages(userId: string, chatId: string, { cursor, lim
 }
 
 export async function sendMessage(userId: string, chatId: string, body: SendMessageRequest) {
-  const chat = await getOwnedChat(userId, chatId);
-
-  const existing = await findSentMessage(chatId, body.clientRequestId);
+  const [chat, existing] = await Promise.all([
+    getOwnedChat(userId, chatId),
+    findSentMessage(chatId, body.clientRequestId),
+  ]);
   if (existing) return existing;
 
   const title = chat.title === DEFAULT_CHAT_TITLE ? deriveTitle(body.content) : undefined;

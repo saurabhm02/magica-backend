@@ -19,9 +19,9 @@ export const POST = route<ChatRouteContext>(async (req, { params }, traceId) => 
   const { chatId } = await params;
   const body = parseInput(SendMessageRequest, await readJson(req));
   const { message, run } = await sendMessage(user.id, chatId, body);
-  const { accessToken } = await dispatchRun(run, traceId);
+  const { runId, accessToken } = await dispatchRun(run, traceId);
   return NextResponse.json(
-    SendMessageResponse.parse({ chatId, messageId: message.id, runId: run.id, realtime: { accessToken } }),
+    SendMessageResponse.parse({ chatId, messageId: message.id, runId: run.id, realtime: { runId, accessToken } }),
     { status: 201 },
   );
 });

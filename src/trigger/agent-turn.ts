@@ -24,8 +24,10 @@ export const agentTurn = task({
     const thinkingStartedAt = new Date().toISOString();
     metadata.replace({ status: "thinking", thinkingStartedAt });
 
-    const prompt = await buildPrompt(run.chatId);
-    const reply = await startReply(runId, run.chatId);
+    const [prompt, reply] = await Promise.all([
+      buildPrompt(run.chatId, run.userMessageId),
+      startReply(runId, run.chatId),
+    ]);
     const logContext = { traceId, chatId: run.chatId, runId, messageId: reply.id };
     logger.info("agent-turn started", logContext);
 
@@ -65,9 +67,10 @@ export const agentTurn = task({
   },
 });
 
-async function buildPrompt(chatId: string): Promise<LlmMessage[]> {
+async function buildPrompt(chatId: string, userMessageId: string): Promise<LlmMessage[]> {
   const latest = await db.message.findMany({
     where: { chatId },
+    cursor: { id: userMessageId },
     orderBy: { createdAt: "desc" },
     take: MAX_HISTORY_MESSAGES,
   });

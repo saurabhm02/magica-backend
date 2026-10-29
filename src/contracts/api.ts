@@ -57,7 +57,7 @@ export const SendMessageResponse = z.object({
   chatId: z.string(),
   messageId: z.string(),
   runId: z.string(),
-  realtime: z.object({ accessToken: z.string() }),
+  realtime: z.object({ runId: z.string(), accessToken: z.string() }),
 });
 export type SendMessageResponse = z.infer<typeof SendMessageResponse>;
 
