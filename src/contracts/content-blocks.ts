@@ -7,11 +7,21 @@ const ThinkingBlock = z.object({ type: z.literal("thinking"), text: z.string() }
 
 const ReasoningBlock = z.object({ type: z.literal("reasoning"), text: z.string() });
 
+const ToolField = z.object({
+  label: z.string(),
+  value: z.string(),
+});
+
 const ToolUseBlock = z.object({
   type: z.literal("tool_use"),
   id: z.string(),
   name: z.string(),
   input: z.record(z.string(), z.unknown()),
+  label: z.string().optional(),
+  doneLabel: z.string().optional(),
+  detail: z.string().optional(),
+  fields: z.array(ToolField).optional(),
+  model: z.string().optional(),
 });
 
 const ToolResultBlock = z.object({
@@ -19,6 +29,8 @@ const ToolResultBlock = z.object({
   toolUseId: z.string(),
   output: z.unknown().optional(),
   error: SafeError.optional(),
+  credits: z.number().optional(),
+  durationMs: z.number().optional(),
 });
 
 const CitationsBlock = z.object({

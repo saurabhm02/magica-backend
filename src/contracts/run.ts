@@ -16,6 +16,11 @@ const RunMetadataStatus = z.enum([
   "cancelled",
 ]);
 
+const RunMetadataToolField = z.object({
+  label: z.string(),
+  value: z.string(),
+});
+
 const RunMetadataTool = z.object({
   id: z.string(),
   name: z.string(),
@@ -24,6 +29,12 @@ const RunMetadataTool = z.object({
   finishedAt: z.iso.datetime().optional(),
   renderKey: z.string(),
   outputPreview: z.string().optional(),
+  label: z.string().optional(),
+  doneLabel: z.string().optional(),
+  detail: z.string().optional(),
+  fields: z.array(RunMetadataToolField).optional(),
+  credits: z.number().optional(),
+  model: z.string().optional(),
 });
 
 const RunMetadataAsset = z.object({

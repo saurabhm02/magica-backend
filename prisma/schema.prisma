@@ -31,6 +31,14 @@ enum RunStatus {
   cancelled
 }
 
+enum ToolStatus {
+  pending
+  running
+  succeeded
+  failed
+  cancelled
+}
+
 model User {
   id          String     @id @default(cuid())
   clerkUserId String     @unique
@@ -89,9 +97,31 @@ model AgentRun {
   error              Json? 
   startedAt          DateTime?
   finishedAt         DateTime?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  tools              ToolInvocation[]
 
   @@index([chatId, createdAt])
   @@index([userMessageId])
+}
+
+model ToolInvocation {
+  id             String         @id @default(cuid())
+  runId          String
+  run            AgentRun       @relation(fields: [runId], references: [id], onDelete: Restrict)
+  toolCallId     String
+  order          Int
+  toolName       String
+  status         ToolStatus     @default(pending)
+  input          Json
+  output         Json?
+  magicaRunId    String?
+  durationMs     Int?
+  error          Json?
+  idempotencyKey String         @unique
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@unique([runId, toolCallId])
+  @@index([runId, order])
 }

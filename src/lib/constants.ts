@@ -17,9 +17,9 @@ You are not a general chatbot persona. Don't say you are Claude, ChatGPT or any 
 - Have taste and say it. If a format, ratio, hook or style would work better for their goal, tell them in one line.
 - Be honest over agreeable. If an idea won't work, say why, then offer what will.
 
-# Right now
-- In this version you can only reply with text. You can't create, edit, crop or merge images or videos yet, and you can't open uploaded files or links.
-- If the user asks for media, don't pretend you made it. Say in one line that generating it isn't available here yet, then give the most useful text output: a ready-to-use image or video prompt, a shot list, a script, captions, or exact edit specs (crop ratio, size, transitions).
+# Tools
+- You have tools to generate images (gpt_image_2), crop images (crop_image), and merge videos (merge_videos). When asked to create, edit, crop, or merge media, call the appropriate tool.
+- Generated images and videos are displayed to the user automatically in the interface. Never paste raw media URLs or markdown image links (![...](...)) in your response. Briefly say what was made, then give one short suggestion for a next step.
 - You can't browse the web. For trends, prices or recent news, say your information may be out of date, then give your best answer.
 
 # How you reply
@@ -47,13 +47,51 @@ export const TERMINAL_RUN_STATUSES: RunStatus[] = ["succeeded", "failed", "cance
 
 
 export const LLM_MAX_RETRIES = 2;
+export const GENERIC_SAFE_MESSAGE = "Something went wrong. Please try again.";
 
-export const LLM_SAFE_MESSAGES: Partial<Record<ErrorCode, string>> = {
+export const SAFE_ERROR_MESSAGES: Record<ErrorCode, string> = {
+  VALIDATION_FAILED: "Invalid request.",
+  UNAUTHORIZED: "You must be signed in.",
+  NOT_FOUND: "Not found.",
+  RUN_ALREADY_ACTIVE: "A run is already active in this chat.",
+  RATE_LIMITED: "Too many requests. Please wait a moment.",
+  INSUFFICIENT_CREDITS: "Insufficient credits.",
+  CREDITS_EXHAUSTED: "Credits exhausted.",
   LLM_RATE_LIMITED: "The free model is busy right now. Please try again in a moment.",
   LLM_UNAVAILABLE: "The model is unavailable right now. Please try again.",
   LLM_EMPTY_STREAM: "The model returned an empty reply. Please try again.",
+  LLM_MALFORMED_TOOL_CALL: "Tool call format error.",
+  MAX_TURNS: "Stopped after too many steps.",
+  MAGICA_UNAUTHORIZED: "Image service not available.",
+  MAGICA_RATE_LIMITED: "Image service is busy. Please try again shortly.",
+  MAGICA_TIMEOUT: "Operation timed out. Please try again.",
+  MAGICA_RUN_FAILED: "The operation failed. Please try again.",
+  TOOL_INPUT_INVALID: "Invalid tool input.",
+  SKILL_NOT_FOUND: "Skill not found.",
+  SKILL_INVALID_PATH: "Invalid skill path.",
+  SKILL_CHANGED: "Skill content changed.",
+  WAITPOINT_EXPIRED: "Waitpoint expired.",
+  WAITPOINT_ALREADY_RESOLVED: "Waitpoint already resolved.",
+  UPLOAD_TOO_LARGE: "File upload too large.",
+  UPLOAD_TYPE_NOT_ALLOWED: "File type not allowed.",
+  UPLOAD_QUOTA_EXCEEDED: "Upload quota exceeded.",
+  STALE_RUN: "Run is stale.",
+  CANCELLED: "Operation cancelled.",
+  INTERNAL: GENERIC_SAFE_MESSAGE,
 };
-export const GENERIC_SAFE_MESSAGE = "Something went wrong. Please try again.";
+
+export const MAGICA_CREDITS_EXHAUSTED_MESSAGE = "Image service provider credits depleted. Please try again later.";
+
+export const CREDIT_COSTS = {
+  crop_image: 1,
+  gpt_image_2: 3,
+  merge_videos: 5,
+  get_model_info: 0,
+} as const;
+
+export const MAGICA_TIMEOUT_MS = 600_000;
+export const MAGICA_INITIAL_POLL_DELAY_S = 5;
+export const MAGICA_MAX_POLL_DELAY_S = 15;
 
 export const RUN_CRASHED_ERROR: SafeError = { code: "INTERNAL", message: GENERIC_SAFE_MESSAGE, retryable: true };
 export const DISPATCH_FAILED_ERROR: SafeError = {
