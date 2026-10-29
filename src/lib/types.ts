@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import type OpenAI from "openai";
 import type { z } from "zod";
+import type { ToolCategory } from "@/contracts/api";
 import type { ErrorCode, SafeError } from "@/contracts/errors";
 
 export type ToolCall = { id: string; name: string; arguments: string; order?: number };
@@ -41,7 +42,10 @@ export type ToolDisplayInfo = {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type LocalTool<TInput = any, TOutput = any> = {
   name: string;
+  displayName: string;
   description: string;
+  category: ToolCategory;
+  hidden?: boolean;
   inputSchema: z.ZodType<TInput>;
   renderKey: string;
   estimateCredits: (input: TInput) => number;
@@ -53,7 +57,10 @@ export type LocalTool<TInput = any, TOutput = any> = {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type MagicaTool<TInput = any, TOutput = any> = {
   name: string;
+  displayName: string;
   description: string;
+  category: ToolCategory;
+  hidden?: boolean;
   inputSchema: z.ZodType<TInput>;
   renderKey: string;
   estimateCredits: (input: TInput) => number;

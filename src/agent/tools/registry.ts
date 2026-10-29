@@ -37,3 +37,17 @@ export function getLlmTools(): OpenAI.Chat.Completions.ChatCompletionTool[] {
     },
   }));
 }
+
+export function listPublicTools() {
+  return getAllTools()
+    .filter((tool) => !tool.hidden)
+    .map((tool) => ({
+      name: tool.name,
+      displayName: tool.displayName,
+      description: tool.description,
+      category: tool.category,
+      estimatedCredits: tool.estimateCredits({}),
+    }));
+}
+
+export const getUserFacingTools = listPublicTools;

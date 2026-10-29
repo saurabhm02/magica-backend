@@ -10,10 +10,7 @@ const envSchema = z.object({
   LLM_MODEL: z.literal("openrouter/free"),
   MAGICA_BASE_URL: z.url(),
   MAGICA_API_KEY: z.string().min(1),
-  TRANSLOADIT_KEY: z.string().min(1),
-  TRANSLOADIT_SECRET: z.string().min(1),
   CLIENT_ORIGIN: z.url(),
-  STARTING_CREDITS: z.coerce.number().int().positive(),
   MAX_AGENT_TURNS: z.coerce.number().int().positive(),
 });
 

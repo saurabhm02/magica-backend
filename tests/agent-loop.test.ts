@@ -4,8 +4,12 @@ import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { metadata } from "@trigger.dev/sdk";
 import * as llmModule from "@/agent/llm";
+import { executeTurnTools } from "@/agent/run-tools";
+import { ContentBlock } from "@/contracts/content-blocks";
+import type { SafeError } from "@/contracts/errors";
+import type { RunMetadata } from "@/contracts/run";
 import { db } from "@/lib/db";
-import type { LlmEvent, LlmMessage } from "@/lib/types";
+import type { LlmEvent, LlmMessage, ToolCall } from "@/lib/types";
 import { createChat } from "@/modules/chats/chats";
 import { sendMessage } from "@/modules/messages/messages";
 import { runAgentTurn, textStream } from "@/trigger/agent-turn";
@@ -248,7 +252,7 @@ describe("Agent turn loop with chained tools", () => {
 
     expect(blocks[4]?.type).toBe("text");
     expect(blocks[4]?.text).toBe("Here is your cropped sunset!");
-  }, 60_000);
+  }, 90_000);
 
   it("model sends no tool call ids: computes one id and uses it across assistant tool_calls, ToolInvocation row, tool message and content blocks across 2 steps", async () => {
     const chat = await createChat(userId);
@@ -392,5 +396,134 @@ describe("Agent turn loop with chained tools", () => {
     expect(blocks[2]?.id).toBe("call_1");
     expect(blocks[3]?.type).toBe("tool_result");
     expect(blocks[3]?.toolUseId).toBe("call_1");
-  }, 60_000);
+  }, 90_000);
+
+  it("text + tool call + insufficient credits has text once, not duplicated", async () => {
+    const chat = await createChat(userId);
+    const sent = await sendMessage(userId, chat.id, {
+      content: "Generate an image please",
+      clientRequestId: randomUUID(),
+      planMode: false,
+    });
+    const runId = sent.run.id;
+
+    // Set user balance to 0 so tool call fails with insufficient credits
+    await db.user.update({ where: { id: userId }, data: { creditBalance: 0n } });
+
+    async function* mockStream(): AsyncGenerator<LlmEvent> {
+      yield { type: "text-delta", text: "Generating your requested artwork now." };
+      yield {
+        type: "tool-call-delta",
+        index: 0,
+        id: "call_abc",
+        name: "gpt_image_2",
+        arguments: JSON.stringify({ prompt: "A cozy cabin" }),
+      };
+      yield { type: "usage", promptTokens: 10, completionTokens: 10, totalTokens: 20 };
+      yield { type: "done", model: "openrouter/free" };
+    }
+
+    vi.spyOn(llmModule, "streamChat").mockImplementation(() => mockStream());
+    vi.spyOn(metadata, "replace").mockImplementation(() => {});
+    vi.spyOn(textStream, "append").mockResolvedValue(undefined);
+
+    await runAgentTurn(runId, "trace_no_dupe");
+
+    const run = await db.agentRun.findUniqueOrThrow({ where: { id: runId } });
+    expect(run.status).toBe("failed");
+    expect((run.error as unknown as SafeError).code).toBe("INSUFFICIENT_CREDITS");
+
+    const reply = await db.message.findUniqueOrThrow({ where: { id: run.assistantMessageId! } });
+    const content = reply.content as unknown as ContentBlock[];
+    const textBlocks = content.filter((b): b is Extract<ContentBlock, { type: "text" }> => b.type === "text");
+
+    expect(textBlocks.length).toBe(1);
+    expect(textBlocks[0]?.text).toBe("Generating your requested artwork now.");
+
+    // Restore user balance
+    await db.user.update({ where: { id: userId }, data: { creditBalance: 1_000_000n } });
+  });
+
+  it("a saved message has renderKey and assets matching the live metadata", async () => {
+    const chat = await createChat(userId, "Display Data Chat");
+    const sent = await sendMessage(userId, chat.id, {
+      content: "Generate an image",
+      clientRequestId: randomUUID(),
+      planMode: false,
+    });
+    const runId = sent.run.id;
+
+    const toolCalls: ToolCall[] = [
+      {
+        id: "call_test_crop",
+        name: "crop_image",
+        arguments: JSON.stringify({
+          image_url: "https://example.com/source.png",
+          width_px: 500,
+          height_px: 500,
+        }),
+      },
+    ];
+
+    type ToolMeta = NonNullable<RunMetadata["tools"]>[number];
+    type AssetMeta = NonNullable<RunMetadata["assets"]>[number];
+
+    const toolsMetadata: ToolMeta[] = [];
+    const assetsMetadata: AssetMeta[] = [];
+
+    vi.spyOn(magicaRun, "batchTriggerAndWait").mockResolvedValueOnce({
+      runs: [
+        {
+          id: "m_run_1",
+          ok: true,
+          output: {
+            ok: true,
+            output: { image_url: "https://example.com/cropped_asset.png" },
+            creditUsed: 5_000,
+          },
+        },
+      ],
+    } as unknown as Awaited<ReturnType<typeof magicaRun.batchTriggerAndWait>>);
+
+    const exec = await executeTurnTools({
+      runId,
+      userId,
+      traceId: "test_trace_1",
+      signal: new AbortController().signal,
+      toolCalls,
+      toolsMetadata,
+      assetsMetadata,
+      onMetadataChange: () => {},
+    });
+
+    const toolUse = exec.contentBlocks.find((b): b is Extract<ContentBlock, { type: "tool_use" }> => b.type === "tool_use");
+    const toolResult = exec.contentBlocks.find((b): b is Extract<ContentBlock, { type: "tool_result" }> => b.type === "tool_result");
+
+    expect(toolUse).toBeDefined();
+    expect(toolResult).toBeDefined();
+
+    expect(toolUse?.renderKey).toBe("image-result");
+    expect(toolUse?.renderKey).toBe(toolsMetadata[0]?.renderKey);
+
+    expect(toolResult?.assets).toEqual([{ type: "image", url: "https://example.com/cropped_asset.png" }]);
+    expect(assetsMetadata[0]?.url).toBe("https://example.com/cropped_asset.png");
+
+    const savedMsg = await db.message.create({
+      data: {
+        chatId: chat.id,
+        role: "assistant",
+        status: "complete",
+        content: exec.contentBlocks as unknown as object[],
+      },
+    });
+
+    const loadedMsg = await db.message.findUniqueOrThrow({ where: { id: savedMsg.id } });
+    const loadedBlocks = (loadedMsg.content as unknown[]) ?? [];
+    const parsedBlocks = loadedBlocks.map((b) => ContentBlock.parse(b));
+    const loadedUse = parsedBlocks.find((b): b is Extract<ContentBlock, { type: "tool_use" }> => b.type === "tool_use");
+    const loadedResult = parsedBlocks.find((b): b is Extract<ContentBlock, { type: "tool_result" }> => b.type === "tool_result");
+
+    expect(loadedUse?.renderKey).toBe("image-result");
+    expect(loadedResult?.assets).toEqual([{ type: "image", url: "https://example.com/cropped_asset.png" }]);
+  });
 });

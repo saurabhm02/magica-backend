@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { afterAll, beforeAll, expect, test } from "vitest";
+import { NextRequest } from "next/server";
+import { afterAll, beforeAll, expect, test, vi } from "vitest";
+import { GET as getChatsRoute } from "@/app/api/v1/chats/route";
+import type { ListChatsResponse } from "@/contracts/api";
+import * as authModule from "@/lib/auth";
 import { db } from "@/lib/db";
 import { AppError } from "@/lib/errors";
 import { createChat, getOwnedChat, listChats, updateChat } from "@/modules/chats/chats";
@@ -15,6 +19,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await db.message.deleteMany({ where: { chat: { userId: { in: [userId, otherUserId] } } } });
   await db.chat.deleteMany({ where: { userId: { in: [userId, otherUserId] } } });
   await db.user.deleteMany({ where: { id: { in: [userId, otherUserId] } } });
   await db.$disconnect();
@@ -49,4 +54,60 @@ test("pagination does not skip or duplicate rows across pages", async () => {
 test("another user's chat is not found", async () => {
   const chat = await createChat(otherUserId, "someone else's chat");
   await expect(getOwnedChat(userId, chat.id)).rejects.toThrow(AppError);
+});
+
+test("GET /v1/chats?q=... finds by title, finds by a word only in message, never returns another user's chats", async () => {
+  const chatTitleMatch = await createChat(userId, "Unique Alpha Title Project");
+
+  const chatContentMatch = await createChat(userId, "Normal Daily Notes");
+  await db.message.create({
+    data: {
+      chatId: chatContentMatch.id,
+      role: "user",
+      status: "complete",
+      content: [{ type: "text", text: "We need to analyze the secret keyword velociraptor here." }],
+      searchText: "We need to analyze the secret keyword velociraptor here.",
+    },
+  });
+
+  const otherChat = await createChat(otherUserId, "Unique Alpha Title Project from Other User");
+  await db.message.create({
+    data: {
+      chatId: otherChat.id,
+      role: "user",
+      status: "complete",
+      content: [{ type: "text", text: "velociraptor fossil discovered" }],
+      searchText: "velociraptor fossil discovered",
+    },
+  });
+
+  vi.spyOn(authModule, "requireUser").mockResolvedValue({
+    id: userId,
+    clerkUserId: "mock_a",
+    creditBalance: 10_000_000n,
+    createdAt: new Date(),
+  });
+
+  const reqTitle = new NextRequest("http://localhost:4000/v1/chats?q=alpha");
+  const resTitle = await getChatsRoute(reqTitle, { params: Promise.resolve({}) });
+  expect(resTitle.status).toBe(200);
+  const bodyTitle = (await resTitle.json()) as ListChatsResponse;
+  const titleIds = bodyTitle.items.map((c) => c.id);
+  expect(titleIds).toContain(chatTitleMatch.id);
+  expect(titleIds).not.toContain(otherChat.id);
+
+  const reqMsg = new NextRequest("http://localhost:4000/v1/chats?q=velociraptor");
+  const resMsg = await getChatsRoute(reqMsg, { params: Promise.resolve({}) });
+  expect(resMsg.status).toBe(200);
+  const bodyMsg = (await resMsg.json()) as ListChatsResponse;
+  const msgIds = bodyMsg.items.map((c) => c.id);
+  expect(msgIds).toContain(chatContentMatch.id);
+  expect(msgIds).not.toContain(otherChat.id);
+  expect(msgIds).not.toContain(chatTitleMatch.id);
+
+  await updateChat(userId, chatContentMatch.id, { pinned: true });
+  const reqPinned = new NextRequest("http://localhost:4000/v1/chats?q=notes");
+  const resPinned = await getChatsRoute(reqPinned, { params: Promise.resolve({}) });
+  const bodyPinned = (await resPinned.json()) as ListChatsResponse;
+  expect(bodyPinned.items[0]?.id).toBe(chatContentMatch.id);
 });

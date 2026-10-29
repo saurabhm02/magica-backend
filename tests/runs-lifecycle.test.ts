@@ -3,10 +3,11 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { metadata, runs } from "@trigger.dev/sdk";
 import * as llmModule from "@/agent/llm";
 import type { ContentBlock } from "@/contracts/content-blocks";
+import type { SafeError } from "@/contracts/errors";
 import { db } from "@/lib/db";
 import type { LlmEvent } from "@/lib/types";
 import { createChat } from "@/modules/chats/chats";
-import { getUserCreditBalance } from "@/modules/credits/credits";
+import { getUserCreditBalance, reserveCredits } from "@/modules/credits/credits";
 import { sendMessage } from "@/modules/messages/messages";
 import { cancelAgentRun, getActiveAgentRun } from "@/modules/runs/runs";
 import { runAgentTurn, textStream } from "@/trigger/agent-turn";
@@ -196,5 +197,100 @@ describe("Phase 5: Runs Lifecycle (Cancel, Reload Recovery, Reconnect)", () => {
 
     // 3. Other user trying to access chat receives 404 (NOT_FOUND)
     await expect(getActiveAgentRun(otherUserId, chat.id)).rejects.toThrow(/Chat not found/);
+  });
+
+  it("cancelling a queued run refunds its hold and frees the chat", async () => {
+    const chat = await createChat(userId);
+    const sent = await sendMessage(userId, chat.id, {
+      content: "Hello world",
+      clientRequestId: randomUUID(),
+      planMode: false,
+    });
+    const runId = sent.run.id;
+    const invId = `inv_${randomUUID()}`;
+
+    await db.toolInvocation.create({
+      data: {
+        id: invId,
+        runId,
+        toolCallId: "call_1",
+        order: 0,
+        toolName: "gpt_image_2",
+        status: "pending",
+        input: { prompt: "test" },
+        idempotencyKey: `inv_${invId}`,
+      },
+    });
+
+    const initialBal = await getUserCreditBalance(userId);
+    await reserveCredits({ userId, runId, toolInvocationId: invId, amount: 50_000n });
+    const heldBal = await getUserCreditBalance(userId);
+    expect(heldBal).toBe(initialBal - 50_000n);
+
+    const cancelRes = await cancelAgentRun(userId, chat.id, runId);
+    expect(cancelRes.status).toBe("cancelled");
+
+    const updatedRun = await db.agentRun.findUniqueOrThrow({ where: { id: runId } });
+    expect(updatedRun.status).toBe("cancelled");
+
+    const refundedBal = await getUserCreditBalance(userId);
+    expect(refundedBal).toBe(initialBal);
+
+    const nextSent = await sendMessage(userId, chat.id, {
+      content: "Next message",
+      clientRequestId: randomUUID(),
+      planMode: false,
+    });
+    expect(nextSent.message.id).toBeDefined();
+    expect(nextSent.run.status).toBe("queued");
+  });
+
+  it("a stale run is failed and replaced on the next send", async () => {
+    const chat = await createChat(userId);
+    const sent = await sendMessage(userId, chat.id, {
+      content: "First task",
+      clientRequestId: randomUUID(),
+      planMode: false,
+    });
+    const activeRunId = sent.run.id;
+    const trigId = `trig_${randomUUID()}`;
+
+    await db.agentRun.update({
+      where: { id: activeRunId },
+      data: { triggerRunId: trigId, status: "running" },
+    });
+
+    vi.spyOn(runs, "retrieve").mockResolvedValue({
+      id: trigId,
+      status: "COMPLETED",
+    } as unknown as Awaited<ReturnType<typeof runs.retrieve>>);
+
+    const secondSent = await sendMessage(userId, chat.id, {
+      content: "Second task after stale",
+      clientRequestId: randomUUID(),
+      planMode: false,
+    });
+
+    expect(secondSent.run.id).not.toBe(activeRunId);
+    const oldRun = await db.agentRun.findUniqueOrThrow({ where: { id: activeRunId } });
+    expect(oldRun.status).toBe("failed");
+    expect((oldRun.error as unknown as SafeError).code).toBe("STALE_RUN");
+
+    const fifteenMinsAgo = new Date(Date.now() - 15 * 60 * 1000);
+    await db.agentRun.update({
+      where: { id: secondSent.run.id },
+      data: { status: "running", updatedAt: fifteenMinsAgo },
+    });
+
+    const thirdSent = await sendMessage(userId, chat.id, {
+      content: "Third task after timeout",
+      clientRequestId: randomUUID(),
+      planMode: false,
+    });
+
+    expect(thirdSent.run.id).not.toBe(secondSent.run.id);
+    const secondRun = await db.agentRun.findUniqueOrThrow({ where: { id: secondSent.run.id } });
+    expect(secondRun.status).toBe("failed");
+    expect((secondRun.error as unknown as SafeError).code).toBe("STALE_RUN");
   });
 });

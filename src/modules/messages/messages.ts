@@ -4,25 +4,28 @@ import { ContentBlock } from "@/contracts/content-blocks";
 import type { Message } from "@/contracts/message";
 import type { SendMessageRequest } from "@/contracts/api";
 import { getOwnedChat } from "@/modules/chats/chats";
+import { recoverStaleRun } from "@/modules/runs/runs";
 import { db } from "@/lib/db";
-import { decodeCursor, encodeCursor } from "@/lib/cursor";
+import { afterCreatedAtIdCursor, CreatedAtIdCursor, decodeCursor, encodeCursor } from "@/lib/cursor";
 import { CHAT_TITLE_MAX_CHARS, DEFAULT_CHAT_TITLE } from "@/lib/constants";
 import { AppError } from "@/lib/errors";
 
-const MessageCursor = z.object({ createdAt: z.iso.datetime(), id: z.string() });
-type MessageCursor = z.infer<typeof MessageCursor>;
-
-function afterCursor(cursor: MessageCursor) {
-  const createdAt = new Date(cursor.createdAt);
-  return [{ createdAt: { lt: createdAt } }, { createdAt, id: { lt: cursor.id } }];
+export function extractSearchText(blocks: ContentBlock[]): string {
+  const parts: string[] = [];
+  for (const b of blocks) {
+    if (b.type === "text" && b.text.trim()) {
+      parts.push(b.text.trim());
+    }
+  }
+  return parts.join("\n");
 }
 
 export async function listMessages(userId: string, chatId: string, { cursor, limit }: { cursor?: string; limit: number }) {
   await getOwnedChat(userId, chatId);
-  const decoded = cursor ? decodeCursor(cursor, MessageCursor) : undefined;
+  const decoded = cursor ? decodeCursor(cursor, CreatedAtIdCursor) : undefined;
 
   const rows = await db.message.findMany({
-    where: { chatId, ...(decoded && { OR: afterCursor(decoded) }) },
+    where: { chatId, ...(decoded && { OR: afterCreatedAtIdCursor(decoded) }) },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: limit + 1,
   });
@@ -44,14 +47,15 @@ export async function sendMessage(userId: string, chatId: string, body: SendMess
 
   const title = chat.title === DEFAULT_CHAT_TITLE ? deriveTitle(body.content) : undefined;
 
-  try {
-    const [message, run] = await db.$transaction(async (tx) => {
+  const createMessageAndRun = () =>
+    db.$transaction(async (tx) => {
       const message = await tx.message.create({
         data: {
           chatId,
           role: "user",
           status: "complete",
           content: [{ type: "text", text: body.content }],
+          searchText: body.content.trim(),
           clientRequestId: body.clientRequestId,
         },
       });
@@ -59,13 +63,21 @@ export async function sendMessage(userId: string, chatId: string, body: SendMess
         data: { chatId, userId, userMessageId: message.id, status: "queued", idempotencyKey: body.clientRequestId },
       });
       await tx.chat.update({ where: { id: chatId }, data: { updatedAt: new Date(), ...(title && { title }) } });
-      return [message, run] as const;
+      return { message, run };
     }, { timeout: 20_000, maxWait: 15_000 });
-    return { message, run };
+
+  try {
+    return await createMessageAndRun();
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       const sameSend = await findSentMessage(chatId, body.clientRequestId);
       if (sameSend) return sameSend;
+
+      const recovered = await recoverStaleRun(chatId);
+      if (recovered) {
+        return await createMessageAndRun();
+      }
+
       throw new AppError("RUN_ALREADY_ACTIVE", "A reply is already in progress in this chat.", false);
     }
     throw error;
@@ -76,6 +88,13 @@ async function findSentMessage(chatId: string, clientRequestId: string) {
   const message = await db.message.findUnique({ where: { chatId_clientRequestId: { chatId, clientRequestId } } });
   if (!message) return null;
   const run = await db.agentRun.findFirstOrThrow({ where: { userMessageId: message.id }, orderBy: { createdAt: "desc" } });
+  if (run.status === "failed" && !run.triggerRunId) {
+    const updated = await db.agentRun.update({
+      where: { id: run.id },
+      data: { status: "queued", error: Prisma.DbNull, finishedAt: null },
+    });
+    return { message, run: updated };
+  }
   return { message, run };
 }
 

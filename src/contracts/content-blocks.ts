@@ -17,6 +17,7 @@ const ToolUseBlock = z.object({
   id: z.string(),
   name: z.string(),
   input: z.record(z.string(), z.unknown()),
+  renderKey: z.string().optional(),
   label: z.string().optional(),
   doneLabel: z.string().optional(),
   detail: z.string().optional(),
@@ -31,6 +32,7 @@ const ToolResultBlock = z.object({
   error: SafeError.optional(),
   credits: z.number().optional(),
   durationMs: z.number().optional(),
+  assets: z.array(z.object({ type: z.enum(["image", "video", "audio"]), url: z.string() })).optional(),
 });
 
 const CitationsBlock = z.object({

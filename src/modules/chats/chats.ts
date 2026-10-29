@@ -1,4 +1,4 @@
-import type { Chat as PrismaChat } from "@prisma/client";
+import type { Chat as PrismaChat, Prisma } from "@prisma/client";
 import { z } from "zod";
 import type { Chat } from "@/contracts/chat";
 import { db } from "@/lib/db";
@@ -27,11 +27,38 @@ export function createChat(userId: string, title?: string) {
   return db.chat.create({ data: { userId, ...(title && { title }) } });
 }
 
-export async function listChats(userId: string, { cursor, limit }: { cursor?: string; limit: number }) {
+export async function listChats(
+  userId: string,
+  { cursor, limit, q }: { cursor?: string; limit: number; q?: string }
+) {
   const decoded = cursor ? decodeCursor(cursor, ChatCursor) : undefined;
+  const trimmedQ = q?.trim();
+
+  const searchFilter = trimmedQ
+    ? {
+        OR: [
+          { title: { contains: trimmedQ, mode: "insensitive" as const } },
+          {
+            messages: {
+              some: {
+                searchText: { contains: trimmedQ, mode: "insensitive" as const },
+              },
+            },
+          },
+        ],
+      }
+    : undefined;
+
+  const conditions: Prisma.ChatWhereInput[] = [];
+  if (decoded) conditions.push({ OR: afterCursor(decoded) });
+  if (searchFilter) conditions.push(searchFilter);
 
   const rows = await db.chat.findMany({
-    where: { userId, deletedAt: null, ...(decoded && { OR: afterCursor(decoded) }) },
+    where: {
+      userId,
+      deletedAt: null,
+      ...(conditions.length > 0 && { AND: conditions }),
+    },
     orderBy: [{ pinned: "desc" }, { updatedAt: "desc" }, { id: "desc" }],
     take: limit + 1,
   });

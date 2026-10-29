@@ -1,7 +1,4 @@
-import {
-  MAGICA_CREDITS_EXHAUSTED_MESSAGE,
-  SAFE_ERROR_MESSAGES,
-} from "@/lib/constants";
+import { SAFE_ERROR_MESSAGES } from "@/lib/constants";
 import { env } from "@/lib/env";
 import { AppError } from "@/lib/errors";
 
@@ -33,6 +30,18 @@ function magicaHeaders() {
 
 function baseUrl() {
   return env.MAGICA_BASE_URL.replace(/\/$/, "");
+}
+
+function checkStatus(res: Response) {
+  if (res.status === 401) {
+    throw new AppError("MAGICA_UNAUTHORIZED", SAFE_ERROR_MESSAGES.MAGICA_UNAUTHORIZED, false);
+  }
+  if (res.status === 403) {
+    throw new AppError("CREDITS_EXHAUSTED", SAFE_ERROR_MESSAGES.CREDITS_EXHAUSTED, false);
+  }
+  if (res.status === 429) {
+    throw new AppError("MAGICA_RATE_LIMITED", SAFE_ERROR_MESSAGES.MAGICA_RATE_LIMITED, true);
+  }
 }
 
 async function fetchWithRetry(
@@ -82,26 +91,14 @@ export async function runNode(
     opts,
   );
 
-  if (res.status === 401) {
-    throw new AppError("MAGICA_UNAUTHORIZED", SAFE_ERROR_MESSAGES.MAGICA_UNAUTHORIZED, false);
-  }
-  if (res.status === 403) {
-    throw new AppError("MAGICA_UNAUTHORIZED", MAGICA_CREDITS_EXHAUSTED_MESSAGE, false);
-  }
-  if (res.status === 429) {
-    throw new AppError("MAGICA_RATE_LIMITED", SAFE_ERROR_MESSAGES.MAGICA_RATE_LIMITED, true);
-  }
+  checkStatus(res);
   if (!res.ok) {
-    const errorBody = (await res.json().catch(() => null)) as Record<string, unknown> | null;
-    const msg =
-      (typeof errorBody?.userMessage === "string" ? errorBody.userMessage : undefined) ||
-      (typeof errorBody?.message === "string" ? errorBody.message : undefined) ||
-      (typeof errorBody?.error === "string" ? errorBody.error : undefined) ||
-      SAFE_ERROR_MESSAGES.MAGICA_RUN_FAILED;
     if (res.status === 400) {
+      const errorBody = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+      const msg = typeof errorBody?.userMessage === "string" ? errorBody.userMessage : SAFE_ERROR_MESSAGES.TOOL_INPUT_INVALID;
       throw new AppError("TOOL_INPUT_INVALID", msg, false);
     }
-    throw new AppError("MAGICA_RUN_FAILED", msg, false);
+    throw new AppError("MAGICA_RUN_FAILED", SAFE_ERROR_MESSAGES.MAGICA_RUN_FAILED, false);
   }
 
   const data = (await res.json()) as { runId: string };
@@ -117,52 +114,15 @@ export async function getRun(
   const res = await fetchWithRetry(
     url,
     {
-      headers: { Authorization: `Bearer ${env.MAGICA_API_KEY}` },
+      headers: magicaHeaders(),
     },
     opts,
   );
 
-  if (res.status === 401) {
-    throw new AppError("MAGICA_UNAUTHORIZED", SAFE_ERROR_MESSAGES.MAGICA_UNAUTHORIZED, false);
-  }
-  if (res.status === 403) {
-    throw new AppError("MAGICA_UNAUTHORIZED", MAGICA_CREDITS_EXHAUSTED_MESSAGE, false);
-  }
-  if (res.status === 429) {
-    throw new AppError("MAGICA_RATE_LIMITED", SAFE_ERROR_MESSAGES.MAGICA_RATE_LIMITED, true);
-  }
+  checkStatus(res);
   if (!res.ok) {
     throw new AppError("MAGICA_RUN_FAILED", SAFE_ERROR_MESSAGES.MAGICA_RUN_FAILED, false);
   }
 
   return (await res.json()) as MagicaRunResponse;
-}
-
-const schemaCache = new Map<string, Promise<Record<string, unknown>>>();
-
-export function fetchModelSchema(
-  modelId: string,
-  options?: MagicaFetchOptions | AbortSignal,
-): Promise<Record<string, unknown>> {
-  let cached = schemaCache.get(modelId);
-  if (!cached) {
-    cached = (async () => {
-      const opts: MagicaFetchOptions = options instanceof AbortSignal ? { signal: options } : (options ?? {});
-      const url = `${baseUrl()}/v1/models/${modelId}/schema`;
-      const res = await fetchWithRetry(
-        url,
-        {
-          headers: { Authorization: `Bearer ${env.MAGICA_API_KEY}` },
-        },
-        opts,
-      );
-      if (!res.ok) {
-        schemaCache.delete(modelId);
-        throw new AppError("MAGICA_RUN_FAILED", "Failed to fetch model schema", false);
-      }
-      return (await res.json()) as Record<string, unknown>;
-    })();
-    schemaCache.set(modelId, cached);
-  }
-  return cached;
 }

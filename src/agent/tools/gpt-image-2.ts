@@ -75,14 +75,16 @@ export function estimateGptImage2Credits(input?: Partial<GptImage2Input>): numbe
 
 export const gptImage2Tool: MagicaTool<GptImage2Input, GptImage2Output> = {
   name: "gpt_image_2",
+  displayName: "GPT Image 2",
   description:
     "Generate a new image from a text prompt or edit an existing image using OpenAI's GPT Image 2 model. Default quality is Medium (use High only when user asks for high/best quality), default size is 1024x1024, default n is 1. To edit, provide uploadedImages.",
+  category: "image",
   inputSchema: GptImage2Input,
   renderKey: "image-result",
   estimateCredits: (input) => estimateGptImage2Credits(input),
   assets: (output) => output.images.map((url) => ({ type: "image", url })),
   describe: (input) => {
-    const prompt = input?.prompt || "";
+    const prompt = input.prompt || "";
     const shortPrompt = prompt.length > 25 ? prompt.slice(0, 25) + "..." : prompt;
     const { subModelId } = getGptImage2SubModelId(input);
     return {
@@ -93,11 +95,11 @@ export const gptImage2Tool: MagicaTool<GptImage2Input, GptImage2Output> = {
       fields: [
         { label: "Model", value: subModelId },
         { label: "Prompt", value: prompt },
-        { label: "Outputs", value: String(input?.n ?? 1) },
-        { label: "Size", value: String(input?.size ?? "1024x1024") },
-        { label: "Quality", value: String(input?.quality ?? "Medium") },
-        { label: "Background", value: String(input?.background ?? "Auto") },
-        { label: "Output Format", value: String(input?.output_format ?? "PNG") },
+        { label: "Outputs", value: String(input.n ?? 1) },
+        { label: "Size", value: String(input.size ?? "1024x1024") },
+        { label: "Quality", value: String(input.quality ?? "Medium") },
+        { label: "Background", value: String(input.background ?? "Auto") },
+        { label: "Output Format", value: String(input.output_format ?? "PNG") },
       ],
     };
   },

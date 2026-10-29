@@ -28,8 +28,10 @@ export function buildCropImageParams(input: CropImageInput): Record<string, unkn
 
 export const cropImageTool: MagicaTool<CropImageInput, CropImageOutput> = {
   name: "crop_image",
+  displayName: "Crop Image",
   description:
     "Crop an image using percentage coordinates (x_percent, y_percent, width_percent, height_percent), exact pixel dimensions (width_px, height_px, optional x_px, y_px), or pixel bounding box (crop.{x,y,width,height}).",
+  category: "image",
   inputSchema: CropImageInput,
   renderKey: "image-result",
   estimateCredits: () => CREDIT_COSTS.crop_image,

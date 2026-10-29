@@ -1,9 +1,11 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
+  provider   = "postgresql"
+  extensions = [pg_trgm]
 }
 
 
@@ -69,6 +71,7 @@ model Chat {
   runs      AgentRun[]
 
   @@index([userId, pinned(sort: Desc), updatedAt(sort: Desc), id(sort: Desc)])
+  @@index([title(ops: raw("gin_trgm_ops"))], type: Gin)
 }
 
 model Message {
@@ -78,6 +81,7 @@ model Message {
   role            MessageRole
   status          MessageStatus
   content         Json 
+  searchText      String?
   clientRequestId String?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
@@ -86,6 +90,7 @@ model Message {
 
   @@unique([chatId, clientRequestId])
   @@index([chatId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([searchText(ops: raw("gin_trgm_ops"))], type: Gin)
 }
 
 model AgentRun {

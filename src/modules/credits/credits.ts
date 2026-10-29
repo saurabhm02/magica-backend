@@ -1,20 +1,19 @@
 import type { LedgerType, Prisma } from "@prisma/client";
+import { afterCreatedAtIdCursor, CreatedAtIdCursor, decodeCursor, encodeCursor } from "@/lib/cursor";
 import { db } from "@/lib/db";
 import { AppError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 
 const TX_OPTIONS = { timeout: 30_000, maxWait: 15_000 };
 
-interface ApplyEntryParams {
+type ApplyEntryParams = {
   userId: string;
   runId?: string;
   toolInvocationId?: string;
   type: LedgerType;
   amount: bigint;
   idempotencyKey: string;
-}
-
-
+};
 
 export function formatMicrocredits(amount: bigint | number): string {
   const m = Number(amount) / 1_000_000;
@@ -99,7 +98,6 @@ export async function settleCredits(params: {
   userId: string;
   runId?: string;
   toolInvocationId: string;
-  estimate?: bigint | number;
   actualCreditUsed: bigint | number;
 }): Promise<{ settled: boolean; balanceAfter: bigint }> {
   const actualBig = BigInt(params.actualCreditUsed);
@@ -109,13 +107,10 @@ export async function settleCredits(params: {
     const existing = await tx.creditLedger.findUnique({ where: { idempotencyKey } });
     if (existing) return { settled: false, balanceAfter: existing.balanceAfter };
 
-    let holdAmount = params.estimate !== undefined ? BigInt(params.estimate) : 0n;
-    if (holdAmount <= 0n) {
-      const reserveRow = await tx.creditLedger.findUnique({
-        where: { idempotencyKey: `reserve:${params.toolInvocationId}` },
-      });
-      if (reserveRow) holdAmount = -reserveRow.amount;
-    }
+    const reserveRow = await tx.creditLedger.findUnique({
+      where: { idempotencyKey: `reserve:${params.toolInvocationId}` },
+    });
+    const holdAmount = reserveRow ? -reserveRow.amount : 0n;
 
     if (holdAmount > 0n) {
       await applyEntry(tx, {
@@ -195,52 +190,30 @@ export async function grantCredits(params: {
 }
 
 export async function refundLeakedHolds(runId: string): Promise<void> {
-  const rows = await db.creditLedger.findMany({
-    where: { runId },
-    select: { toolInvocationId: true, type: true, amount: true, userId: true },
+  const reserves = await db.creditLedger.findMany({
+    where: { runId, type: "reserve" },
+    select: { toolInvocationId: true, amount: true, userId: true },
   });
-
-  const toolMap = new Map<string, Array<{ type: LedgerType; amount: bigint; userId: string }>>();
-  for (const r of rows) {
-    if (!r.toolInvocationId) continue;
-    let list = toolMap.get(r.toolInvocationId);
-    if (!list) {
-      list = [];
-      toolMap.set(r.toolInvocationId, list);
-    }
-    list.push({ type: r.type, amount: r.amount, userId: r.userId });
-  }
-
-  for (const [toolInvocationId, entries] of toolMap) {
-    const hasReserve = entries.some((e) => e.type === "reserve");
-    const hasSettleOrRefund = entries.some((e) => e.type === "settle" || e.type === "refund");
-    if (hasReserve && !hasSettleOrRefund) {
-      const reserveEntry = entries.find((e) => e.type === "reserve")!;
-      const holdAmount = -reserveEntry.amount;
-      if (holdAmount > 0n) {
-        await refundCredits({
-          userId: reserveEntry.userId,
-          runId,
-          toolInvocationId,
-          amount: holdAmount,
-        });
-      }
+  for (const r of reserves) {
+    if (r.toolInvocationId) {
+      await refundCredits({ userId: r.userId, runId, toolInvocationId: r.toolInvocationId, amount: -r.amount });
     }
   }
 }
 
 export async function getLedger(userId: string, query?: { cursor?: string; limit?: number }) {
   const limit = Math.min(Math.max(query?.limit ?? 20, 1), 100);
-  const items = await db.creditLedger.findMany({
-    where: { userId },
+  const decoded = query?.cursor ? decodeCursor(query.cursor, CreatedAtIdCursor) : undefined;
+  const rows = await db.creditLedger.findMany({
+    where: { userId, ...(decoded && { OR: afterCreatedAtIdCursor(decoded) }) },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: limit + 1,
-    ...(query?.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
   });
 
-  const hasNextPage = items.length > limit;
-  const pageItems = hasNextPage ? items.slice(0, limit) : items;
-  const nextCursor = hasNextPage ? pageItems[pageItems.length - 1]?.id : undefined;
+  const hasNextPage = rows.length > limit;
+  const pageItems = hasNextPage ? rows.slice(0, limit) : rows;
+  const last = pageItems.at(-1);
+  const nextCursor = hasNextPage && last ? encodeCursor({ createdAt: last.createdAt.toISOString(), id: last.id }) : null;
 
   return {
     items: pageItems.map((item) => ({
@@ -249,8 +222,8 @@ export async function getLedger(userId: string, query?: { cursor?: string; limit
       runId: item.runId,
       toolInvocationId: item.toolInvocationId,
       type: item.type,
-      amount: item.amount.toString(),
-      balanceAfter: item.balanceAfter.toString(),
+      amount: Number(item.amount),
+      balanceAfter: Number(item.balanceAfter),
       idempotencyKey: item.idempotencyKey,
       createdAt: item.createdAt.toISOString(),
     })),

@@ -111,3 +111,38 @@ export const CancelRunResponse = z.object({
   status: RunStatus,
 });
 export type CancelRunResponse = z.infer<typeof CancelRunResponse>;
+
+export const AssetType = z.enum(["image", "video"]);
+export type AssetType = z.infer<typeof AssetType>;
+
+export const AssetItem = z.object({
+  url: z.string(),
+  type: AssetType,
+  chatId: z.string(),
+  toolName: z.string(),
+  createdAt: z.iso.datetime(),
+});
+export type AssetItem = z.infer<typeof AssetItem>;
+
+export const ListAssetsQuery = CursorQuery.extend({
+  type: AssetType.optional(),
+});
+export type ListAssetsQuery = z.infer<typeof ListAssetsQuery>;
+
+export const ListAssetsResponse = Page(AssetItem);
+export type ListAssetsResponse = z.infer<typeof ListAssetsResponse>;
+
+export const ToolCategory = z.enum(["image", "video", "util"]);
+export type ToolCategory = z.infer<typeof ToolCategory>;
+
+export const ToolItem = z.object({
+  name: z.string(),
+  displayName: z.string(),
+  description: z.string(),
+  category: ToolCategory,
+  estimatedCredits: z.number(),
+});
+export type ToolItem = z.infer<typeof ToolItem>;
+
+export const ListToolsResponse = z.array(ToolItem);
+export type ListToolsResponse = z.infer<typeof ListToolsResponse>;

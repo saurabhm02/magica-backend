@@ -1,12 +1,14 @@
 {
   "name": "server",
   "private": true,
+  "packageManager": "pnpm@12.15.0",
   "scripts": {
     "dev": "next dev --port 4000",
     "trigger:dev": "trigger dev",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:generate": "prisma generate",
+    "sync:contracts": "node ../client/scripts/sync-contracts.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "eslint ."
@@ -25,6 +27,7 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
+    "@trigger.dev/build": "4.8.1",
     "@types/node": "^24.10.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",

@@ -1,10 +1,12 @@
 import { logger, metadata, streams, task } from "@trigger.dev/sdk";
+import type { RunMetadata as TriggerMetadata } from "@trigger.dev/sdk";
 import type { Prisma } from "@prisma/client";
 import { streamChat } from "@/agent/llm";
 import { executeTurnTools } from "@/agent/run-tools";
 import { getSkillsPromptSummary } from "@/agent/skills/registry";
 import { getLlmTools } from "@/agent/tools/registry";
 import type { ContentBlock } from "@/contracts/content-blocks";
+import type { SafeError } from "@/contracts/errors";
 import type { RunMetadata } from "@/contracts/run";
 import {
   MAX_HISTORY_MESSAGES,
@@ -18,51 +20,47 @@ import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import type { AgentTurnPayload, LlmMessage, ToolCall, TurnResult } from "@/lib/types";
 import { refundLeakedHolds } from "@/modules/credits/credits";
+import { extractSearchText } from "@/modules/messages/messages";
 
 export const textStream = streams.define<string>({ id: TEXT_STREAM_ID });
 
 type ToolMeta = NonNullable<RunMetadata["tools"]>[number];
 type AssetMeta = NonNullable<RunMetadata["assets"]>[number];
 
+const updateMeta = (patch: RunMetadata) => metadata.replace(patch as TriggerMetadata);
+
 export async function runAgentTurn(runId: string, traceId: string, signal = new AbortController().signal) {
-  const run = await db.agentRun.findUniqueOrThrow({ where: { id: runId } });
-  if (TERMINAL_RUN_STATUSES.includes(run.status)) return;
-
-  const thinkingStartedMs = Date.now();
-  const thinkingStartedAt = new Date(thinkingStartedMs).toISOString();
-  metadata.replace({ status: "thinking", thinkingStartedAt });
-
-  const [prompt, reply] = await Promise.all([
-    buildPrompt(run.chatId, run.userMessageId),
-    startReply(runId, run.chatId),
-  ]);
-  const logContext = { traceId, chatId: run.chatId, runId, messageId: reply.id };
-
-  const messages: LlmMessage[] = [...prompt];
+  let replyId: string | null = null;
   const contentBlocks: ContentBlock[] = [];
   const toolsMetadata: ToolMeta[] = [];
   const assetsMetadata: AssetMeta[] = [];
   let streamText = "";
-  const llmTools = getLlmTools();
-
+  const thinkingStartedMs = Date.now();
+  const thinkingStartedAt = new Date(thinkingStartedMs).toISOString();
+  let logContext = { traceId, chatId: "", runId, messageId: "" };
   const result: TurnResult = {};
-  let lastSavedAt = Date.now();
-  let overallToolOrder = 0;
 
-  const updateWorkingMeta = () =>
-    metadata.replace({ status: "working", thinkingStartedAt, tools: toolsMetadata, assets: assetsMetadata });
-
-  const onAbort = () => {
-    metadata.replace({
-      status: "stopping",
-      thinkingStartedAt,
-      tools: toolsMetadata,
-      assets: assetsMetadata,
-    });
-  };
+  const onAbort = () => updateMeta({ status: "stopping", thinkingStartedAt, tools: toolsMetadata, assets: assetsMetadata });
   signal.addEventListener("abort", onAbort, { once: true });
 
   try {
+    const run = await db.agentRun.findUniqueOrThrow({ where: { id: runId } });
+    if (TERMINAL_RUN_STATUSES.includes(run.status)) return;
+
+    updateMeta({ status: "thinking", thinkingStartedAt });
+
+    const [prompt, reply] = await Promise.all([
+      buildPrompt(run.chatId, run.userMessageId),
+      startReply(runId, run.chatId),
+    ]);
+    replyId = reply.id;
+    logContext = { traceId, chatId: run.chatId, runId, messageId: reply.id };
+
+    const messages: LlmMessage[] = [...prompt];
+    const llmTools = getLlmTools();
+    let lastSavedAt = Date.now();
+    let overallToolOrder = 0;
+
     for (let turn = 0; turn < env.MAX_AGENT_TURNS; turn++) {
       if (signal.aborted) break;
       streamText = "";
@@ -76,7 +74,7 @@ export async function runAgentTurn(runId: string, traceId: string, signal = new 
           if (!firstTokenAt) firstTokenAt = Date.now();
           if (isFirstTextTokenOfStep) {
             isFirstTextTokenOfStep = false;
-            updateWorkingMeta();
+            updateMeta({ status: "working", thinkingStartedAt, tools: toolsMetadata, assets: assetsMetadata });
           }
           streamText += event.text;
           await textStream.append(event.text);
@@ -111,6 +109,9 @@ export async function runAgentTurn(runId: string, traceId: string, signal = new 
       });
 
       if (streamText.trim()) contentBlocks.push({ type: "text", text: streamText });
+      const currentStepText = streamText;
+      streamText = "";
+
       if (result.error || turnToolCalls.length === 0) break;
 
       for (const tc of turnToolCalls) {
@@ -121,7 +122,7 @@ export async function runAgentTurn(runId: string, traceId: string, signal = new 
 
       messages.push({
         role: "assistant",
-        content: streamText || null,
+        content: currentStepText || null,
         tool_calls: turnToolCalls.map((tc) => ({
           id: tc.id,
           type: "function" as const,
@@ -137,7 +138,7 @@ export async function runAgentTurn(runId: string, traceId: string, signal = new 
         toolCalls: turnToolCalls,
         toolsMetadata,
         assetsMetadata,
-        onMetadataChange: updateWorkingMeta,
+        onMetadataChange: () => updateMeta({ status: "working", thinkingStartedAt, tools: toolsMetadata, assets: assetsMetadata }),
       });
 
       contentBlocks.push(...exec.contentBlocks);
@@ -157,15 +158,20 @@ export async function runAgentTurn(runId: string, traceId: string, signal = new 
       logger.info("agent-turn aborted during execution", logContext);
     } else {
       logger.error("agent-turn crashed", { ...logContext, detail: String(crash) });
-      await refundLeakedHolds(runId).catch((e) => logger.error("refundLeakedHolds failed in crash handler", { ...logContext, detail: String(e) }));
-      const { chargedCredits } = await finishRun(runId, reply.id, contentBlocks, streamText, { error: RUN_CRASHED_ERROR });
-      metadata.replace({ status: "failed", thinkingStartedAt, error: RUN_CRASHED_ERROR, tools: toolsMetadata, assets: assetsMetadata, credits: chargedCredits });
+      const { chargedCredits } = await finalizeRun({
+        runId,
+        messageId: replyId,
+        blocks: contentBlocks,
+        partial: streamText,
+        status: "failed",
+        error: RUN_CRASHED_ERROR,
+      });
+      updateMeta({ status: "failed", thinkingStartedAt, error: RUN_CRASHED_ERROR, tools: toolsMetadata, assets: assetsMetadata, credits: chargedCredits });
       throw crash;
     }
   }
 
   if (signal.aborted) {
-    await refundLeakedHolds(runId).catch((e) => logger.error("refundLeakedHolds failed in cancel handler", { ...logContext, detail: String(e) }));
     await db.toolInvocation.updateMany({
       where: { runId, status: { in: ["pending", "running"] } },
       data: { status: "cancelled" },
@@ -176,8 +182,14 @@ export async function runAgentTurn(runId: string, traceId: string, signal = new 
         m.finishedAt = new Date().toISOString();
       }
     }
-    const { chargedCredits } = await finishCancelledRun(runId, reply.id, contentBlocks, streamText);
-    metadata.replace({
+    const { chargedCredits } = await finalizeRun({
+      runId,
+      messageId: replyId,
+      blocks: contentBlocks,
+      partial: streamText,
+      status: "cancelled",
+    });
+    updateMeta({
       status: "cancelled",
       thinkingStartedAt,
       tools: toolsMetadata,
@@ -188,8 +200,18 @@ export async function runAgentTurn(runId: string, traceId: string, signal = new 
     return;
   }
 
-  const { chargedCredits } = await finishRun(runId, reply.id, contentBlocks, streamText, result);
-  metadata.replace(
+  const status = result.error ? "failed" : "succeeded";
+  const { chargedCredits } = await finalizeRun({
+    runId,
+    messageId: replyId,
+    blocks: contentBlocks,
+    partial: streamText,
+    status,
+    error: result.error,
+    usage: result.usage,
+    routedModel: result.routedModel,
+  });
+  updateMeta(
     result.error
       ? { status: "failed", thinkingStartedAt, error: result.error, tools: toolsMetadata, assets: assetsMetadata, credits: chargedCredits }
       : { status: "complete", thinkingStartedAt, tools: toolsMetadata, assets: assetsMetadata, credits: chargedCredits },
@@ -233,14 +255,42 @@ async function startReply(runId: string, chatId: string) {
 function savePartialContent(messageId: string, contentBlocks: ContentBlock[], partialText: string) {
   const content = [...contentBlocks];
   if (partialText) content.push({ type: "text", text: partialText });
-  return db.message.update({ where: { id: messageId }, data: { content: content as unknown as Prisma.InputJsonValue } });
+  const searchText = extractSearchText(content);
+  return db.message.update({
+    where: { id: messageId },
+    data: {
+      content: content as Prisma.InputJsonValue,
+      searchText,
+    },
+  });
 }
 
-async function finishRun(runId: string, messageId: string, blocks: ContentBlock[], partial: string, res: TurnResult) {
-  await refundLeakedHolds(runId).catch((e) => logger.error("refundLeakedHolds failed in finishRun", { runId, detail: String(e) }));
+async function finalizeRun({
+  runId,
+  messageId,
+  blocks,
+  partial,
+  status,
+  error,
+  usage,
+  routedModel,
+}: {
+  runId: string;
+  messageId?: string | null;
+  blocks: ContentBlock[];
+  partial: string;
+  status: "succeeded" | "failed" | "cancelled";
+  error?: SafeError;
+  usage?: TurnResult["usage"];
+  routedModel?: string;
+}) {
+  await refundLeakedHolds(runId).catch((e) =>
+    logger.error("refundLeakedHolds failed in finalizeRun", { runId, detail: String(e) })
+  );
+
   const content = [...blocks];
   if (partial.trim()) {
-    if (content[content.length - 1]?.type !== "text") content.push({ type: "text", text: partial });
+    content.push({ type: "text", text: partial });
   } else if (content.length === 0) {
     content.push({ type: "text", text: "" });
   }
@@ -251,56 +301,36 @@ async function finishRun(runId: string, messageId: string, blocks: ContentBlock[
   });
   const chargedCredits = toolAgg._sum.credits ?? 0n;
 
-  await db.$transaction([
-    db.message.update({
-      where: { id: messageId },
-      data: { status: res.error ? "failed" : "complete", content: content as unknown as Prisma.InputJsonValue },
-    }),
+  const messageStatus = status === "succeeded" ? "complete" : status;
+  const updates: Prisma.PrismaPromise<unknown>[] = [
     db.agentRun.update({
       where: { id: runId },
       data: {
-        status: res.error ? "failed" : "succeeded",
-        error: res.error ? (res.error as unknown as Prisma.InputJsonValue) : undefined,
-        routedModel: res.routedModel,
-        usage: res.usage ? (res.usage as unknown as Prisma.InputJsonValue) : undefined,
+        status,
+        error: error ? (error as Prisma.InputJsonValue) : undefined,
+        routedModel,
+        usage: usage ? (usage as Prisma.InputJsonValue) : undefined,
         chargedCredits,
         finishedAt: new Date(),
       },
     }),
-  ]);
+  ];
 
-  return { chargedCredits: Number(chargedCredits) };
-}
-
-async function finishCancelledRun(runId: string, messageId: string, blocks: ContentBlock[], partial: string) {
-  const content = [...blocks];
-  if (partial.trim()) {
-    if (content[content.length - 1]?.type !== "text") content.push({ type: "text", text: partial });
-  } else if (content.length === 0) {
-    content.push({ type: "text", text: "" });
+  if (messageId) {
+    const searchText = extractSearchText(content);
+    updates.push(
+      db.message.update({
+        where: { id: messageId },
+        data: {
+          status: messageStatus,
+          content: content as Prisma.InputJsonValue,
+          searchText,
+        },
+      }),
+    );
   }
 
-  const toolAgg = await db.toolInvocation.aggregate({
-    where: { runId, status: "succeeded" },
-    _sum: { credits: true },
-  });
-  const chargedCredits = toolAgg._sum.credits ?? 0n;
-
-  await db.$transaction([
-    db.message.update({
-      where: { id: messageId },
-      data: { status: "cancelled", content: content as unknown as Prisma.InputJsonValue },
-    }),
-    db.agentRun.update({
-      where: { id: runId },
-      data: {
-        status: "cancelled",
-        chargedCredits,
-        finishedAt: new Date(),
-      },
-    }),
-  ]);
-
+  await db.$transaction(updates, { timeout: 30_000, maxWait: 15_000 });
   return { chargedCredits: Number(chargedCredits) };
 }
 
@@ -314,11 +344,11 @@ function textOf(content: unknown): string {
       lines.push(block.text);
     } else if (block.type === "tool_use" && typeof block.id === "string" && typeof block.name === "string") {
       toolNames.set(block.id, block.name);
-    } else if (block.type === "tool_result" && typeof block.toolUseId === "string" && block.output && typeof block.output === "object") {
+    } else if (block.type === "tool_result" && typeof block.toolUseId === "string") {
       const name = toolNames.get(block.toolUseId) ?? "tool";
-      const out = block.output as Record<string, unknown>;
-      const url = (out.image_url || out.video_url || (Array.isArray(out.images) && out.images[0])) as string | undefined;
-      lines.push(url ? `[${name} result: ${url}]` : `[${name} result: ${JSON.stringify(block.output)}]`);
+      const assets = Array.isArray(block.assets) ? (block.assets as Array<{ url: string }>) : [];
+      const url = assets[0]?.url;
+      lines.push(url ? `[${name} result: ${url}]` : `[${name} result: ${JSON.stringify(block.output ?? {})}]`);
     }
   }
   return lines.join("\n");

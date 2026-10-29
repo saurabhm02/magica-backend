@@ -1,10 +1,13 @@
 import { randomUUID } from "node:crypto";
+import { NextRequest } from "next/server";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { metadata } from "@trigger.dev/sdk";
 import * as llmModule from "@/agent/llm";
+import { GET as getLedgerRoute } from "@/app/api/v1/me/credits/ledger/route";
 import type { ContentBlock } from "@/contracts/content-blocks";
 import type { SafeError } from "@/contracts/errors";
 import { db } from "@/lib/db";
+import * as authModule from "@/lib/auth";
 import type { LlmEvent } from "@/lib/types";
 import { createChat } from "@/modules/chats/chats";
 import {
@@ -87,7 +90,6 @@ describe("Credits System", { timeout: 60_000 }, () => {
     const resSettle = await settleCredits({
       userId: testUser.id,
       toolInvocationId,
-      estimate: 50_000n,
       actualCreditUsed: 40_000n,
     });
     expect(resSettle.settled).toBe(true);
@@ -123,7 +125,6 @@ describe("Credits System", { timeout: 60_000 }, () => {
     const first = await settleCredits({
       userId: testUser.id,
       toolInvocationId,
-      estimate: 50_000n,
       actualCreditUsed: 45_000n,
     });
     expect(first.settled).toBe(true);
@@ -133,7 +134,6 @@ describe("Credits System", { timeout: 60_000 }, () => {
     const second = await settleCredits({
       userId: testUser.id,
       toolInvocationId,
-      estimate: 50_000n,
       actualCreditUsed: 45_000n,
     });
     expect(second.settled).toBe(false);
@@ -245,7 +245,6 @@ describe("Credits System", { timeout: 60_000 }, () => {
     await settleCredits({
       userId: testUser.id,
       toolInvocationId: tool1,
-      estimate: 20_000n,
       actualCreditUsed: 15_000n,
     });
 
@@ -401,7 +400,6 @@ describe("Credits System", { timeout: 60_000 }, () => {
     const first = await settleCredits({
       userId: testUser.id,
       toolInvocationId,
-      estimate: 20_000n,
       actualCreditUsed: 35_000n,
     });
     expect(first.settled).toBe(true);
@@ -413,7 +411,6 @@ describe("Credits System", { timeout: 60_000 }, () => {
     const second = await settleCredits({
       userId: testUser.id,
       toolInvocationId,
-      estimate: 20_000n,
       actualCreditUsed: 35_000n,
     });
     expect(second.settled).toBe(false);
@@ -461,7 +458,6 @@ describe("Credits System", { timeout: 60_000 }, () => {
     const overSettle = await settleCredits({
       userId: testUser.id,
       toolInvocationId: tool2.id,
-      estimate: 15_000n,
       actualCreditUsed: 25_000n,
     });
     expect(overSettle.settled).toBe(true);
@@ -566,5 +562,26 @@ describe("Credits System", { timeout: 60_000 }, () => {
     await db.message.deleteMany({ where: { chat: { userId: testUser.id } } });
     await db.chat.deleteMany({ where: { userId: testUser.id } });
     await db.user.delete({ where: { id: testUser.id } });
+  });
+
+  it("GET /v1/me/credits/ledger returns 200 with numbers and nextCursor", async () => {
+    vi.spyOn(authModule, "requireUser").mockResolvedValue({
+      id: userId,
+      clerkUserId: "mock_clerk",
+      creditBalance: 1_000_000n,
+      createdAt: new Date(),
+    });
+
+    const req = new NextRequest("http://localhost:4000/v1/me/credits/ledger?limit=5");
+    const res = await getLedgerRoute(req, { params: Promise.resolve({}) });
+    expect(res.status).toBe(200);
+
+    const body = (await res.json()) as { items: Array<{ amount: number; balanceAfter: number }>; nextCursor: string | null };
+    expect(Array.isArray(body.items)).toBe(true);
+    expect("nextCursor" in body).toBe(true);
+    for (const item of body.items) {
+      expect(typeof item.amount).toBe("number");
+      expect(typeof item.balanceAfter).toBe("number");
+    }
   });
 });

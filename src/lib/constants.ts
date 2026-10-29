@@ -47,6 +47,7 @@ export const MAX_HISTORY_MESSAGES = 20;
 export const SAVE_PARTIAL_TEXT_EVERY_MS = 1000;
 export const TEXT_STREAM_ID = "text";
 export const TERMINAL_RUN_STATUSES: RunStatus[] = ["succeeded", "failed", "cancelled"];
+export const ACTIVE_RUN_STATUSES: RunStatus[] = ["queued", "running", "waiting"];
 
 
 export const LLM_MAX_RETRIES = 2;
@@ -83,16 +84,17 @@ export const SAFE_ERROR_MESSAGES: Record<ErrorCode, string> = {
   INTERNAL: GENERIC_SAFE_MESSAGE,
 };
 
-export const MAGICA_CREDITS_EXHAUSTED_MESSAGE = "Image service provider credits depleted. Please try again later.";
-
 export const CREDIT_COSTS = {
   crop_image: 5_000,
   gpt_image_2: 52_680,
   merge_videos: 40_000,
+  merge_videos_additional: 10_000,
   get_model_info: 0,
   load_skill: 0,
   read_skill_asset: 0,
 } as const;
+
+export const STALE_RUN_AFTER_MS = 10 * 60 * 1000;
 
 export const MAGICA_TIMEOUT_MS = 600_000;
 export const MAGICA_INITIAL_POLL_DELAY_S = 5;

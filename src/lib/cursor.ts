@@ -1,4 +1,4 @@
-import type { z } from "zod";
+import { z } from "zod";
 import { AppError } from "@/lib/errors";
 
 export function encodeCursor(value: unknown): string {
@@ -11,4 +11,18 @@ export function decodeCursor<T>(cursor: string, schema: z.ZodType<T>): T {
   } catch {
     throw new AppError("VALIDATION_FAILED", "Invalid cursor", false);
   }
+}
+
+export const CreatedAtIdCursor = z.object({
+  createdAt: z.iso.datetime(),
+  id: z.string(),
+});
+export type CreatedAtIdCursor = z.infer<typeof CreatedAtIdCursor>;
+
+export function afterCreatedAtIdCursor(cursor: CreatedAtIdCursor) {
+  const createdAt = new Date(cursor.createdAt);
+  return [
+    { createdAt: { lt: createdAt } },
+    { createdAt, id: { lt: cursor.id } },
+  ];
 }

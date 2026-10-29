@@ -35,10 +35,6 @@ export async function executeMagicaRun(
 
   const fetchOptions = {
     signal: options?.signal,
-    sleep: options?.sleep ? (ms: number) => {
-      const fn = options.sleep;
-      return fn ? fn(ms / 1000) : Promise.resolve();
-    } : undefined,
   };
 
   if (!magicaRunId) {
