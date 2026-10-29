@@ -14,7 +14,7 @@ export const loadSkillTool: LocalTool<LoadSkillInput, LoadSkillOutput> = {
   hidden: true,
   inputSchema: LoadSkillInput,
   renderKey: "model-info",
-  estimateCredits: () => CREDIT_COSTS.load_skill,
+  estimateCredits: async () => CREDIT_COSTS.load_skill,
   describe: (input) => ({
     label: input?.name ? `Loading skill **${input.name}**` : "Loading skill...",
     doneLabel: "loaded a skill",

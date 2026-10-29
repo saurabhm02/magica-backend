@@ -54,8 +54,9 @@ model User {
   creditBalance BigInt         @default(30000000)
   createdAt     DateTime       @default(now())
   chats         Chat[]
-  runs          AgentRun[]
-  ledger        CreditLedger[]
+  runs            AgentRun[]
+  ledger          CreditLedger[]
+  toolInvocations ToolInvocation[]
 }
 
 model Chat {
@@ -71,7 +72,7 @@ model Chat {
   runs      AgentRun[]
 
   @@index([userId, pinned(sort: Desc), updatedAt(sort: Desc), id(sort: Desc)])
-  @@index([title(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@index([title(ops: raw("gin_trgm_ops"))], type: Gin, map: "Chat_title_trgm_idx")
 }
 
 model Message {
@@ -90,7 +91,7 @@ model Message {
 
   @@unique([chatId, clientRequestId])
   @@index([chatId, createdAt(sort: Desc), id(sort: Desc)])
-  @@index([searchText(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@index([searchText(ops: raw("gin_trgm_ops"))], type: Gin, map: "Message_searchText_trgm_idx")
 }
 
 model AgentRun {
@@ -124,8 +125,11 @@ model AgentRun {
 
 model ToolInvocation {
   id             String         @id @default(cuid())
-  runId          String
-  run            AgentRun       @relation(fields: [runId], references: [id], onDelete: Restrict)
+  userId         String
+  user           User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  runId          String?
+  run            AgentRun?      @relation(fields: [runId], references: [id], onDelete: Restrict)
+  triggerRunId   String?
   toolCallId     String
   order          Int
   toolName       String
@@ -143,6 +147,7 @@ model ToolInvocation {
 
   @@unique([runId, toolCallId])
   @@index([runId, order])
+  @@index([userId, toolName, createdAt(sort: Desc), id(sort: Desc)])
 }
 
 model RunSkill {

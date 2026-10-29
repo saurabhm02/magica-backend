@@ -175,16 +175,17 @@ describe("Phase 5: Runs Lifecycle (Cancel, Reload Recovery, Reconnect)", () => {
       planMode: false,
     });
     const runId = sent.run.id;
+    const triggerRunId = `run_test_${randomUUID()}`;
 
     // 1. While run is active, active-run returns the run info
     await db.agentRun.update({
       where: { id: runId },
-      data: { status: "running", triggerRunId: "trig-run-123" },
+      data: { status: "running", triggerRunId },
     });
     const active = await getActiveAgentRun(userId, chat.id);
     expect(active).not.toBeNull();
     expect(active?.runId).toBe(runId);
-    expect(active?.triggerRunId).toBe("trig-run-123");
+    expect(active?.triggerRunId).toBe(triggerRunId);
     expect(active?.status).toBe("running");
 
     // 2. When run finishes (succeeded), active-run returns null
@@ -212,6 +213,7 @@ describe("Phase 5: Runs Lifecycle (Cancel, Reload Recovery, Reconnect)", () => {
     await db.toolInvocation.create({
       data: {
         id: invId,
+        userId,
         runId,
         toolCallId: "call_1",
         order: 0,

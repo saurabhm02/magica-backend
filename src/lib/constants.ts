@@ -86,7 +86,7 @@ export const SAFE_ERROR_MESSAGES: Record<ErrorCode, string> = {
 
 export const CREDIT_COSTS = {
   crop_image: 5_000,
-  gpt_image_2: 52_680,
+  gpt_image_2: 68_484,
   merge_videos: 40_000,
   merge_videos_additional: 10_000,
   get_model_info: 0,
@@ -109,6 +109,8 @@ export const DISPATCH_FAILED_ERROR: SafeError = {
 
 export const HTTP_STATUS_BY_ERROR_CODE: Partial<Record<ErrorCode, number>> = {
   VALIDATION_FAILED: 400,
+  TOOL_INPUT_INVALID: 400,
+  INSUFFICIENT_CREDITS: 400,
   UNAUTHORIZED: 401,
   NOT_FOUND: 404,
   RUN_ALREADY_ACTIVE: 409,

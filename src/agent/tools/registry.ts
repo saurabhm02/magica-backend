@@ -38,16 +38,17 @@ export function getLlmTools(): OpenAI.Chat.Completions.ChatCompletionTool[] {
   }));
 }
 
-export function listPublicTools() {
-  return getAllTools()
-    .filter((tool) => !tool.hidden)
-    .map((tool) => ({
+export async function listPublicTools() {
+  const tools = getAllTools().filter((tool) => !tool.hidden);
+  return Promise.all(
+    tools.map(async (tool) => ({
       name: tool.name,
       displayName: tool.displayName,
       description: tool.description,
       category: tool.category,
-      estimatedCredits: tool.estimateCredits({}),
-    }));
+      estimatedCredits: await tool.estimateCredits({}),
+    })),
+  );
 }
 
 export const getUserFacingTools = listPublicTools;

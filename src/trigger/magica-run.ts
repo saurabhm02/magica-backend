@@ -9,8 +9,9 @@ import {
   SAFE_ERROR_MESSAGES,
 } from "@/lib/constants";
 import { db } from "@/lib/db";
-import { AppError } from "@/lib/errors";
+import { AppError, toSafeError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
+import { finishToolInvocation } from "@/modules/tools/tools";
 
 export type MagicaRunPayload = {
   toolInvocationId: string;
@@ -84,9 +85,21 @@ export async function executeMagicaRun(
 
 export { type MagicaRunResult } from "@/contracts/tools";
 
-export const magicaRun = task({
+export const magicaRun = task<"magica-run", MagicaRunPayload, MagicaRunResult>({
   id: "magica-run",
   retry: { maxAttempts: 1 },
+  onSuccess: async ({ payload, output }) => {
+    const inv = await db.toolInvocation.findUnique({ where: { id: payload.toolInvocationId } });
+    if (inv && !inv.runId) {
+      await finishToolInvocation(inv, output);
+    }
+  },
+  onFailure: async ({ payload, error }) => {
+    const inv = await db.toolInvocation.findUnique({ where: { id: payload.toolInvocationId } });
+    if (inv && !inv.runId) {
+      await finishToolInvocation(inv, { ok: false, error: toSafeError(error) });
+    }
+  },
   run: async (payload: MagicaRunPayload, { signal }): Promise<MagicaRunResult> => {
     try {
       const res = await executeMagicaRun(payload, {

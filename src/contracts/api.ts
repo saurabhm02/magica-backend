@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { Chat } from "./chat";
+import { SafeError } from "./errors";
 import { Message } from "./message";
 import { CursorQuery, Page } from "./pagination";
 import { RunMetadata, RunStatus } from "./run";
@@ -146,3 +147,77 @@ export type ToolItem = z.infer<typeof ToolItem>;
 
 export const ListToolsResponse = z.array(ToolItem);
 export type ListToolsResponse = z.infer<typeof ListToolsResponse>;
+
+export const ToolStatus = z.enum(["pending", "running", "succeeded", "failed", "cancelled"]);
+export type ToolStatus = z.infer<typeof ToolStatus>;
+
+export const ToolDetailResponse = z.object({
+  name: z.string(),
+  displayName: z.string(),
+  description: z.string(),
+  category: ToolCategory,
+  inputs: z.record(z.string(), z.unknown()),
+  pricingLines: z.array(z.string()),
+  defaultEstimate: z.number(),
+});
+export type ToolDetailResponse = z.infer<typeof ToolDetailResponse>;
+
+export const CreateToolRunRequest = z.object({
+  input: z.record(z.string(), z.unknown()),
+});
+export type CreateToolRunRequest = z.infer<typeof CreateToolRunRequest>;
+
+export const CreateToolRunResponse = z.object({
+  runId: z.string(),
+  realtime: z.object({
+    runId: z.string(),
+    accessToken: z.string(),
+  }),
+});
+export type CreateToolRunResponse = z.infer<typeof CreateToolRunResponse>;
+
+export const ToolRunAsset = z.object({
+  type: z.string(),
+  url: z.string(),
+});
+export type ToolRunAsset = z.infer<typeof ToolRunAsset>;
+
+export const ToolRunResponse = z.object({
+  id: z.string(),
+  runId: z.string(),
+  triggerRunId: z.string().nullable().optional(),
+  accessToken: z.string().nullable().optional(),
+  realtime: z
+    .object({
+      runId: z.string(),
+      accessToken: z.string(),
+    })
+    .nullable()
+    .optional(),
+  toolName: z.string(),
+  status: ToolStatus,
+  output: z.record(z.string(), z.unknown()).nullable().optional(),
+  credits: z.number(),
+  durationMs: z.number().nullable().optional(),
+  error: SafeError.nullable().optional(),
+  assets: z.array(ToolRunAsset),
+  createdAt: z.iso.datetime(),
+});
+export type ToolRunResponse = z.infer<typeof ToolRunResponse>;
+
+export const ToolRunHistoryItem = z.object({
+  runId: z.string(),
+  toolName: z.string(),
+  status: ToolStatus,
+  credits: z.number(),
+  output: z.record(z.string(), z.unknown()).nullable().optional(),
+  assets: z.array(ToolRunAsset),
+  createdAt: z.iso.datetime(),
+});
+export type ToolRunHistoryItem = z.infer<typeof ToolRunHistoryItem>;
+
+export const ListToolRunsQuery = CursorQuery;
+export type ListToolRunsQuery = z.infer<typeof ListToolRunsQuery>;
+
+export const ListToolRunsResponse = Page(ToolRunHistoryItem);
+export type ListToolRunsResponse = z.infer<typeof ListToolRunsResponse>;

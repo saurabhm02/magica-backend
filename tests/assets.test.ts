@@ -81,6 +81,7 @@ describe("GET /v1/assets", () => {
     // Chat 1 has image 1
     await db.toolInvocation.create({
       data: {
+        userId: assetUser.id,
         runId: run1.id,
         toolCallId: "call_img_1",
         order: 0,
@@ -96,6 +97,7 @@ describe("GET /v1/assets", () => {
     // Chat 1 also has video 1
     await db.toolInvocation.create({
       data: {
+        userId: assetUser.id,
         runId: run1.id,
         toolCallId: "call_vid_1",
         order: 1,
@@ -111,6 +113,7 @@ describe("GET /v1/assets", () => {
     // Chat 2 has image 2
     await db.toolInvocation.create({
       data: {
+        userId: assetUser.id,
         runId: run2.id,
         toolCallId: "call_img_2",
         order: 0,
@@ -126,6 +129,7 @@ describe("GET /v1/assets", () => {
     // Other user has secret assets
     await db.toolInvocation.create({
       data: {
+        userId: otherUserId,
         runId: otherRun.id,
         toolCallId: "call_secret",
         order: 0,

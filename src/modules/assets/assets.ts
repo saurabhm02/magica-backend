@@ -37,7 +37,7 @@ export async function listAssets(
       items.push({
         url: a.url,
         type: a.type as AssetType,
-        chatId: inv.run.chatId,
+        chatId: inv.run?.chatId ?? "",
         toolName: inv.toolName,
         createdAt: inv.createdAt.toISOString(),
       });

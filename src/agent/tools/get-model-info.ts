@@ -11,7 +11,7 @@ export const getModelInfoTool: LocalTool<GetModelInfoInput, GetModelInfoOutput> 
   hidden: true,
   inputSchema: GetModelInfoInput,
   renderKey: "model-info",
-  estimateCredits: () => CREDIT_COSTS.get_model_info,
+  estimateCredits: async () => CREDIT_COSTS.get_model_info,
   describe: () => ({
     label: "Checking image model settings",
     doneLabel: "looked up a model",

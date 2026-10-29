@@ -46,9 +46,10 @@ export type LocalTool<TInput = any, TOutput = any> = {
   description: string;
   category: ToolCategory;
   hidden?: boolean;
+  pricingLines?: string[];
   inputSchema: z.ZodType<TInput>;
   renderKey: string;
-  estimateCredits: (input: TInput) => number;
+  estimateCredits: (input: TInput) => Promise<number>;
   assets?: (output: TOutput) => ToolAsset[];
   describe: (input: Partial<TInput>) => ToolDisplayInfo;
   execute: (input: TInput, ctx: ToolContext) => Promise<TOutput>;
@@ -61,9 +62,10 @@ export type MagicaTool<TInput = any, TOutput = any> = {
   description: string;
   category: ToolCategory;
   hidden?: boolean;
+  pricingLines?: string[];
   inputSchema: z.ZodType<TInput>;
   renderKey: string;
-  estimateCredits: (input: TInput) => number;
+  estimateCredits: (input: TInput) => Promise<number>;
   assets?: (output: TOutput) => ToolAsset[];
   describe: (input: Partial<TInput>) => ToolDisplayInfo;
   magica: {

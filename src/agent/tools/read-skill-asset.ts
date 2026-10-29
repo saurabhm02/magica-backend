@@ -20,7 +20,7 @@ export const readSkillAssetTool: LocalTool<ReadSkillAssetInput, ReadSkillAssetOu
   hidden: true,
   inputSchema: ReadSkillAssetInput,
   renderKey: "model-info",
-  estimateCredits: () => CREDIT_COSTS.read_skill_asset,
+  estimateCredits: async () => CREDIT_COSTS.read_skill_asset,
   describe: (input) => ({
     label: input?.path ? `Reading asset **${input.path}**` : "Reading skill asset...",
     doneLabel: "read a skill asset",

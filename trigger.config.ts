@@ -1,5 +1,6 @@
 import { defineConfig } from "@trigger.dev/sdk";
 import { additionalFiles } from "@trigger.dev/build/extensions/core";
+import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
 
 export default defineConfig({
   project: "proj_qvsbemkhzhryzljhzrea",
@@ -19,6 +20,12 @@ export default defineConfig({
   },
   dirs: ["./src/trigger"],
   build: {
-    extensions: [additionalFiles({ files: ["agent-skills/**"] })],
+    extensions: [
+      additionalFiles({ files: ["agent-skills/**"] }),
+      prismaExtension({
+        mode: "legacy",
+        schema: "prisma/schema.prisma",
+      }),
+    ],
   },
 });

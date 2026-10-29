@@ -1,6 +1,6 @@
 import { inspect } from "node:util";
 import { NextResponse } from "next/server";
-import type { ErrorCode, ErrorResponse } from "@/contracts/errors";
+import { type ErrorCode, type ErrorResponse, SafeError } from "@/contracts/errors";
 import { GENERIC_SAFE_MESSAGE, HTTP_STATUS_BY_ERROR_CODE } from "@/lib/constants";
 import { logger } from "@/lib/logger";
 
@@ -13,6 +13,22 @@ export class AppError extends Error {
     super(message);
     this.name = "AppError";
   }
+}
+
+// Turns anything thrown into an error that is safe to show users and the model.
+// Our own errors keep their message (a child task's error arrives as a plain
+// SafeError object, not an AppError); anything else gets the fallback.
+export function toSafeError(
+  error: unknown,
+  fallbackCode: ErrorCode = "INTERNAL",
+  fallbackMessage = GENERIC_SAFE_MESSAGE,
+): SafeError {
+  if (error instanceof AppError) {
+    return { code: error.code, message: error.message, retryable: error.retryable };
+  }
+  const parsed = SafeError.safeParse(error);
+  if (parsed.success) return parsed.data;
+  return { code: fallbackCode, message: fallbackMessage, retryable: false };
 }
 
 export function errorResponse(error: unknown, traceId: string): NextResponse<ErrorResponse> {

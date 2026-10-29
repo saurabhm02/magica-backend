@@ -1,3 +1,4 @@
+import { estimateNodeCredits } from "@/agent/magica";
 import { GptImage2Input, GptImage2Output } from "@/contracts/tools";
 import { CREDIT_COSTS } from "@/lib/constants";
 import { AppError } from "@/lib/errors";
@@ -39,38 +40,30 @@ export function buildGptImage2Payload(input: GptImage2Input): {
   return { subModelId, params };
 }
 
-const GPT_IMAGE_TIERS: Record<string, number> = {
-  "High:1024x1024": 210_720,
-  "High:1536x1024": 164_640,
-  "High:1024x1536": 164_640,
-  "High:2048x2048": 428_160,
-  "High:2048x1152": 169_500,
-  "High:3840x2160": 400_260,
-  "High:2160x3840": 400_260,
-  "Medium:1024x1024": 52_680,
-  "Medium:1536x1024": 41_160,
-  "Medium:1024x1536": 41_160,
-  "Medium:2048x2048": 107_040,
-  "Medium:2048x1152": 42_390,
-  "Medium:3840x2160": 100_080,
-  "Medium:2160x3840": 100_080,
-  "Low:1024x1024": 5_880,
-  "Low:1536x1024": 4_740,
-  "Low:1024x1536": 4_740,
-  "Low:2048x2048": 11_910,
-  "Low:2048x1152": 4_710,
-  "Low:3840x2160": 11_130,
-  "Low:2160x3840": 11_130,
-};
+export const GPT_IMAGE_2_PRICING_LINES = [
+  "Quality High + Size 1024x1024: 0.273936M",
+  "Quality Medium + Size 1024x1024: 0.068484M",
+  "Quality Low + Size 1024x1024: 0.007644M",
+  "Quality High + Size 2048x2048: 0.556608M",
+  "Quality Medium + Size 2048x2048: 0.139152M",
+];
 
-export function estimateGptImage2Credits(input?: Partial<GptImage2Input>): number {
-  if (!input) return CREDIT_COSTS.gpt_image_2;
-  const quality = input.quality ?? "Medium";
-  const size = !input.size || input.size === "Auto" ? "1024x1024" : input.size;
-  const key = `${quality}:${size}`;
-  const base = GPT_IMAGE_TIERS[key] ?? CREDIT_COSTS.gpt_image_2;
-  const count = input.n ?? 1;
-  return base * count;
+export async function estimateGptImage2Credits(input?: Partial<GptImage2Input>): Promise<number> {
+  const quality = input?.quality ?? "Medium";
+  const size = !input?.size || input?.size === "Auto" ? "1024x1024" : input?.size;
+  const n = input?.n ?? 1;
+  const { subModelId } = getGptImage2SubModelId(input);
+
+  let fallbackBase: number = CREDIT_COSTS.gpt_image_2;
+  if (quality === "High") fallbackBase = 273_936;
+  else if (quality === "Low") fallbackBase = 7_644;
+
+  return estimateNodeCredits({
+    nodeType: "gpt_image_2",
+    subModelId,
+    data: { quality, size, n },
+    fallback: fallbackBase * n,
+  });
 }
 
 export const gptImage2Tool: MagicaTool<GptImage2Input, GptImage2Output> = {
@@ -79,6 +72,7 @@ export const gptImage2Tool: MagicaTool<GptImage2Input, GptImage2Output> = {
   description:
     "Generate a new image from a text prompt or edit an existing image using OpenAI's GPT Image 2 model. Default quality is Medium (use High only when user asks for high/best quality), default size is 1024x1024, default n is 1. To edit, provide uploadedImages.",
   category: "image",
+  pricingLines: GPT_IMAGE_2_PRICING_LINES,
   inputSchema: GptImage2Input,
   renderKey: "image-result",
   estimateCredits: (input) => estimateGptImage2Credits(input),

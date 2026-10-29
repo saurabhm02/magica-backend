@@ -3,11 +3,11 @@ import { runs } from "@trigger.dev/sdk";
 import type { z } from "zod";
 import { getTool } from "@/agent/tools/registry";
 import type { ContentBlock } from "@/contracts/content-blocks";
-import type { ErrorCode, SafeError } from "@/contracts/errors";
+import type { SafeError } from "@/contracts/errors";
 import type { RunMetadata } from "@/contracts/run";
 import { CREDIT_RESERVE_MULTIPLIER, GENERIC_SAFE_MESSAGE, SAFE_ERROR_MESSAGES } from "@/lib/constants";
 import { db } from "@/lib/db";
-import { AppError } from "@/lib/errors";
+import { AppError, toSafeError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import {
   isMagicaTool,
@@ -17,7 +17,8 @@ import {
   type Tool,
   type ToolCall,
 } from "@/lib/types";
-import { refundCredits, reserveCredits, settleCredits } from "@/modules/credits/credits";
+import { reserveCredits } from "@/modules/credits/credits";
+import { finishToolInvocation } from "@/modules/tools/tools";
 import { magicaRun } from "@/trigger/magica-run";
 
 type ToolMeta = NonNullable<RunMetadata["tools"]>[number];
@@ -57,18 +58,6 @@ type PreparedCall = {
   magicaPayload?: { params: Record<string, unknown>; subModelId?: string };
   outcome?: Outcome;
 };
-
-function toSafeError(err: unknown, code: ErrorCode = "INTERNAL", msg = GENERIC_SAFE_MESSAGE): SafeError {
-  if (err && typeof err === "object" && "code" in err && "message" in err) {
-    return {
-      code: (err as Record<string, unknown>).code as ErrorCode,
-      message: String((err as Record<string, unknown>).message),
-      retryable: Boolean((err as Record<string, unknown>).retryable),
-    };
-  }
-  if (err instanceof AppError) return { code: err.code as ErrorCode, message: err.message, retryable: err.retryable };
-  return { code, message: msg, retryable: false };
-}
 
 const formatZodError = (name: string, err: z.ZodError) =>
   `Invalid input for ${name}: ${err.issues[0]?.path.join(".") || "arguments"}`;
@@ -115,6 +104,7 @@ export async function executeTurnTools(params: ExecuteTurnToolsParams): Promise<
     const record = await db.toolInvocation.create({
       data: {
         runId,
+        userId,
         toolCallId: toolCall.id,
         order,
         toolName: toolCall.name,
@@ -157,7 +147,7 @@ export async function executeTurnTools(params: ExecuteTurnToolsParams): Promise<
     const parsed = tool.inputSchema.safeParse(rawInput);
     if (!parsed.success) return fail({ code: "TOOL_INPUT_INVALID", message: formatZodError(toolCall.name, parsed.error), retryable: false });
 
-    const estimate = tool.estimateCredits(parsed.data);
+    const estimate = await tool.estimateCredits(parsed.data);
     const reserveAmount = Math.round(estimate * CREDIT_RESERVE_MULTIPLIER);
     if (reserveAmount > 0) {
       try {
@@ -212,7 +202,7 @@ export async function executeTurnTools(params: ExecuteTurnToolsParams): Promise<
       try {
         const output = await localTool.execute(call.parsedInput, { runId, userId, toolInvocationId: call.record.id, signal, traceId, order: call.order });
         call.durationMs = Date.now() - t0;
-        outcomes.set(call.record.id, { ok: true, output, creditUsed: localTool.estimateCredits(call.parsedInput) });
+        outcomes.set(call.record.id, { ok: true, output, creditUsed: await localTool.estimateCredits(call.parsedInput) });
       } catch (err) {
         call.durationMs = Date.now() - t0;
         logger.error("local tool failed", { runId, toolInvocationId: call.record.id, detail: String(err) });
@@ -279,33 +269,23 @@ export async function executeTurnTools(params: ExecuteTurnToolsParams): Promise<
 
   async function finishToolCall(call: PreparedCall, outcome: Outcome) {
     const isCancelled = signal.aborted && !outcome.ok;
-    const status = isCancelled ? "cancelled" : outcome.ok ? "succeeded" : "failed";
-
-    if (outcome.ok) {
-      if (call.reserveAmount > 0 || outcome.creditUsed > 0) {
-        await settleCredits({ userId, runId, toolInvocationId: call.record.id, actualCreditUsed: outcome.creditUsed });
-      }
-    } else if (call.reserveAmount > 0) {
-      await refundCredits({ userId, runId, toolInvocationId: call.record.id, amount: call.reserveAmount });
-    }
-
-    const assets =
-      outcome.ok && call.tool && outcome.output && call.tool.assets
-        ? call.tool.assets(outcome.output).filter((a) => Boolean(a.url)).map((a) => ({ type: a.type, url: a.url }))
-        : undefined;
-
-    await db.toolInvocation.update({
-      where: { id: call.record.id },
-      data: {
-        status,
-        output: outcome.ok ? (outcome.output as Prisma.InputJsonValue) : undefined,
-        error: !outcome.ok ? (outcome.error as Prisma.InputJsonValue) : undefined,
+    const { invocation: updated, assets } = await finishToolInvocation(
+      { id: call.record.id, userId, runId, toolName: call.toolCall.name },
+      {
+        ok: outcome.ok,
+        output: outcome.ok ? outcome.output : undefined,
+        creditUsed: outcome.ok ? outcome.creditUsed : undefined,
+        error: !outcome.ok ? outcome.error : undefined,
         durationMs: call.durationMs,
-        credits: outcome.ok ? BigInt(outcome.creditUsed) : 0n,
+        cancelled: isCancelled,
       },
-    });
+    );
 
-    setStep(call.record.id, { status, finishedAt: new Date().toISOString(), credits: outcome.ok ? outcome.creditUsed : undefined });
+    setStep(call.record.id, {
+      status: updated.status as ToolMeta["status"],
+      finishedAt: new Date().toISOString(),
+      credits: outcome.ok ? outcome.creditUsed : undefined,
+    });
     if (outcome.ok && call.tool) extractAssets(call.tool, outcome.output, call.record.id, assetsMetadata);
 
     return {

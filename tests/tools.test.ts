@@ -1,17 +1,23 @@
 import { randomUUID } from "node:crypto";
 import { NextRequest } from "next/server";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
-import { runNode } from "@/agent/magica";
+import { z } from "zod";
+import { clearEstimateCache, estimateNodeCredits, runNode } from "@/agent/magica";
 import { executeTurnTools } from "@/agent/run-tools";
 import { buildCropImageParams, cropImageTool } from "@/agent/tools/crop-image";
 import { gptImage2Tool } from "@/agent/tools/gpt-image-2";
 import { mergeVideosTool } from "@/agent/tools/merge-videos";
 import { getUserFacingTools } from "@/agent/tools/registry";
+import { GET as getToolRunRoute } from "@/app/api/v1/tool-runs/[id]/route";
+import { GET as getToolDetailRoute } from "@/app/api/v1/tools/[name]/route";
+import { GET as getToolRunsRoute, POST as postToolRunRoute } from "@/app/api/v1/tools/[name]/runs/route";
 import { GET as getToolsRoute } from "@/app/api/v1/tools/route";
 import type { ListToolsResponse } from "@/contracts/api";
 import type { SafeError } from "@/contracts/errors";
+import { CropImageInput } from "@/contracts/tools";
+import { auth } from "@trigger.dev/sdk";
 import { executeMagicaRun, magicaRun } from "@/trigger/magica-run";
 import * as authModule from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -82,6 +88,27 @@ describe("Tool input validation", () => {
       height_px: 400,
     });
   });
+
+  it("CropImageInput JSON schema shows schema-only defaults on percentage fields without polluting parse", () => {
+    const jsonSchema = z.toJSONSchema(CropImageInput) as {
+      properties?: Record<string, { default?: unknown }>;
+    };
+    expect(jsonSchema.properties?.x_percent?.default).toBe(0);
+    expect(jsonSchema.properties?.y_percent?.default).toBe(0);
+    expect(jsonSchema.properties?.width_percent?.default).toBe(100);
+    expect(jsonSchema.properties?.height_percent?.default).toBe(100);
+
+    // Parsing without percentage fields must NOT fill in defaults (would collide with pixel crop mode)
+    const parsed = CropImageInput.parse({
+      image_url: "https://example.com/pic.jpg",
+      width_px: 200,
+      height_px: 200,
+    });
+    expect(parsed.x_percent).toBeUndefined();
+    expect(parsed.y_percent).toBeUndefined();
+    expect(parsed.width_percent).toBeUndefined();
+    expect(parsed.height_percent).toBeUndefined();
+  });
 });
 
 describe("Magica API error handling", () => {
@@ -107,25 +134,6 @@ describe("Magica API error handling", () => {
     expect((thrown as AppError).retryable).toBe(false);
   });
 
-  it("maps 403 to MAGICA_UNAUTHORIZED with provider credits message", async () => {
-    server.use(
-      http.post(`${baseUrl}/v1/nodes/:nodeType/run`, () => {
-        return HttpResponse.json({ message: "Insufficient credits" }, { status: 403 });
-      }),
-    );
-
-    let thrown: unknown;
-    try {
-      await runNode("crop_image", { input: { image_url: "https://example.com/pic.jpg" } });
-    } catch (err) {
-      thrown = err;
-    }
-
-    expect(thrown).toBeInstanceOf(AppError);
-    expect((thrown as AppError).code).toBe("CREDITS_EXHAUSTED");
-    expect((thrown as AppError).message.toLowerCase()).toContain("credits");
-    expect((thrown as AppError).retryable).toBe(false);
-  });
 
   it("runNode never passes raw Magica errors, maps 403 to CREDITS_EXHAUSTED", async () => {
     const originalFetch = globalThis.fetch;
@@ -216,6 +224,8 @@ describe("Magica API error handling", () => {
 
     vi.spyOn(db.toolInvocation, "findUniqueOrThrow").mockResolvedValueOnce({
       id: "inv-timeout",
+      userId: "user-1",
+      triggerRunId: null,
       magicaRunId: "magica-run-timeout",
       runId: "run-1",
       toolName: "crop_image",
@@ -269,6 +279,8 @@ describe("Magica API error handling", () => {
 
     vi.spyOn(db.toolInvocation, "findUniqueOrThrow").mockResolvedValueOnce({
       id: "inv-fail",
+      userId: "user-1",
+      triggerRunId: null,
       magicaRunId: "magica-run-fail",
       runId: "run-1",
       toolName: "crop_image",
@@ -333,6 +345,8 @@ describe("Trigger magica-run task idempotency", () => {
 
     vi.spyOn(db.toolInvocation, "findUniqueOrThrow").mockResolvedValueOnce({
       id: "invocation-1",
+      userId: "user-1",
+      triggerRunId: null,
       magicaRunId: "existing-magica-run-456",
       runId: "run-1",
       toolName: "crop_image",
@@ -545,7 +559,7 @@ describe("GET /v1/tools", () => {
     expect(Array.isArray(tools)).toBe(true);
     expect(tools).toHaveLength(3);
 
-    const registryTools = getUserFacingTools();
+    const registryTools = await getUserFacingTools();
     expect(registryTools).toEqual(tools);
 
     const names = tools.map((t) => t.name);
@@ -571,7 +585,7 @@ describe("GET /v1/tools", () => {
       name: "gpt_image_2",
       displayName: "GPT Image 2",
       category: "image",
-      estimatedCredits: 52_680,
+      estimatedCredits: 68_484,
     });
 
     const cropTool = tools.find((t) => t.name === "crop_image");
@@ -587,7 +601,369 @@ describe("GET /v1/tools", () => {
       name: "merge_videos",
       displayName: "Merge Videos",
       category: "video",
-      estimatedCredits: 50_000,
+      estimatedCredits: 40_000,
     });
+  });
+});
+
+describe("Live pricing with Magica estimate-credits", () => {
+  beforeEach(() => {
+    clearEstimateCache();
+  });
+
+  it("fetches live estimate from Magica and caches it for 1 hour", async () => {
+    let callCount = 0;
+    server.use(
+      http.post(`${baseUrl}/v1/nodes/estimate-credits`, async ({ request }) => {
+        callCount++;
+        const body = (await request.json()) as { nodes: Array<{ type: string; data?: { quality?: string } }> };
+        if (body.nodes[0]?.data?.quality === "High") {
+          return HttpResponse.json({ estimates: [{ microcredits: 273_936 }] });
+        }
+        return HttpResponse.json({ estimates: [{ microcredits: 68_484 }] });
+      }),
+    );
+
+    const highEstimate = await estimateNodeCredits({
+      nodeType: "gpt_image_2",
+      data: { quality: "High", size: "1024x1024" },
+      fallback: 273_936,
+    });
+    expect(highEstimate).toBe(273_936);
+    expect(callCount).toBe(1);
+
+    // Second call with same parameters should return cached value without fetching
+    const cachedEstimate = await estimateNodeCredits({
+      nodeType: "gpt_image_2",
+      data: { quality: "High", size: "1024x1024" },
+      fallback: 999_999,
+    });
+    expect(cachedEstimate).toBe(273_936);
+    expect(callCount).toBe(1);
+  });
+
+  it("falls back to constant and logs warning when Magica call fails", async () => {
+    server.use(
+      http.post(`${baseUrl}/v1/nodes/estimate-credits`, () => {
+        return HttpResponse.json({ error: "Service unavailable" }, { status: 500 });
+      }),
+    );
+
+    const warnSpy = vi.spyOn(logger, "warn");
+
+    const fallbackEstimate = await estimateNodeCredits({
+      nodeType: "crop_image",
+      data: {},
+      fallback: 5_000,
+    });
+
+    expect(fallbackEstimate).toBe(5_000);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("falling back to constant"),
+      expect.objectContaining({ nodeType: "crop_image" }),
+    );
+  });
+});
+
+describe("GET /v1/tools/:name", () => {
+  let userId: string;
+
+  beforeAll(async () => {
+    const user = await db.user.create({
+      data: { clerkUserId: `test_tool_detail_${randomUUID()}`, creditBalance: 1_000_000n },
+    });
+    userId = user.id;
+  });
+
+  afterAll(async () => {
+    if (userId) await db.user.delete({ where: { id: userId } });
+  });
+
+  it("returns tool details with inputs schema, pricing lines, and default estimate", async () => {
+    vi.spyOn(authModule, "requireUser").mockResolvedValue({
+      id: userId,
+      clerkUserId: "mock_detail",
+      creditBalance: 1_000_000n,
+      createdAt: new Date(),
+    });
+
+    const req = new NextRequest("http://localhost:4000/v1/tools/gpt_image_2");
+    const res = await getToolDetailRoute(req, { params: Promise.resolve({ name: "gpt_image_2" }) });
+    expect(res.status).toBe(200);
+
+    const data = (await res.json()) as {
+      name: string;
+      displayName: string;
+      description: string;
+      category: string;
+      inputs: { properties: Record<string, unknown> };
+      pricingLines: string[];
+      defaultEstimate: number;
+    };
+    expect(data).toMatchObject({
+      name: "gpt_image_2",
+      displayName: "GPT Image 2",
+      description: expect.any(String),
+      category: "image",
+      inputs: expect.any(Object),
+      pricingLines: expect.arrayContaining(["Quality High + Size 1024x1024: 0.273936M"]),
+      defaultEstimate: expect.any(Number),
+    });
+    expect(data.inputs.properties).toHaveProperty("prompt");
+  });
+
+  it("returns 404 for hidden or unknown tools", async () => {
+    vi.spyOn(authModule, "requireUser").mockResolvedValue({
+      id: userId,
+      clerkUserId: "mock_detail",
+      creditBalance: 1_000_000n,
+      createdAt: new Date(),
+    });
+
+    const reqHidden = new NextRequest("http://localhost:4000/v1/tools/get_model_info");
+    const resHidden = await getToolDetailRoute(reqHidden, { params: Promise.resolve({ name: "get_model_info" }) });
+    expect(resHidden.status).toBe(404);
+
+    const reqUnknown = new NextRequest("http://localhost:4000/v1/tools/unknown_tool");
+    const resUnknown = await getToolDetailRoute(reqUnknown, { params: Promise.resolve({ name: "unknown_tool" }) });
+    expect(resUnknown.status).toBe(404);
+  });
+});
+
+describe("Direct tool runs (POST /v1/tools/:name/runs, GET /v1/tools/:name/runs, GET /v1/tool-runs/:id)", () => {
+  let userA: { id: string };
+  let userB: { id: string };
+
+  beforeAll(async () => {
+    userA = await db.user.create({
+      data: { clerkUserId: `test_runs_userA_${randomUUID()}`, creditBalance: 500_000n },
+    });
+    userB = await db.user.create({
+      data: { clerkUserId: `test_runs_userB_${randomUUID()}`, creditBalance: 500_000n },
+    });
+  });
+
+  afterAll(async () => {
+    await db.creditLedger.deleteMany({ where: { userId: { in: [userA.id, userB.id] } } });
+    await db.toolInvocation.deleteMany({ where: { userId: { in: [userA.id, userB.id] } } });
+    await db.user.deleteMany({ where: { id: { in: [userA.id, userB.id] } } });
+  });
+
+  it("POST /v1/tools/:name/runs validates input, reserves credits, triggers magica-run, and returns { runId } fast", async () => {
+    vi.spyOn(authModule, "requireUser").mockResolvedValue({
+      id: userA.id,
+      clerkUserId: "mock_a",
+      creditBalance: 500_000n,
+      createdAt: new Date(),
+    });
+
+    const triggerSpy = vi.spyOn(magicaRun, "trigger").mockResolvedValue({
+      id: "trig_run_direct_123",
+      publicAccessToken: "tok_123",
+    } as unknown as Awaited<ReturnType<typeof magicaRun.trigger>>);
+
+    const req = new NextRequest("http://localhost:4000/v1/tools/crop_image/runs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        input: {
+          image_url: "https://example.com/source.jpg",
+          crop: { x: 0, y: 0, width: 200, height: 200 },
+        },
+      }),
+    });
+
+    const res = await postToolRunRoute(req, { params: Promise.resolve({ name: "crop_image" }) });
+    expect(res.status).toBe(200);
+
+    const json = (await res.json()) as { runId: string; realtime: { runId: string; accessToken: string } };
+    expect(json).toMatchObject({
+      runId: expect.any(String),
+      realtime: {
+        runId: "trig_run_direct_123",
+        accessToken: "tok_123",
+      },
+    });
+
+    expect(triggerSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toolInvocationId: json.runId,
+        nodeType: "crop_image",
+      }),
+    );
+
+    const inv = await db.toolInvocation.findUnique({ where: { id: json.runId } });
+    expect(inv).toBeDefined();
+    expect(inv?.userId).toBe(userA.id);
+    expect(inv?.runId).toBeNull();
+    expect(inv?.triggerRunId).toBe("trig_run_direct_123");
+    expect(inv?.status).toBe("pending");
+
+    // Hold should be reserved
+    const ledger = await db.creditLedger.findUnique({
+      where: { idempotencyKey: `reserve:${json.runId}` },
+    });
+    expect(ledger).toBeDefined();
+    expect(ledger?.amount).toBe(-7_500n); // 5000 * 1.5 multiplier
+  });
+
+  it("POST refunds credits and marks invocation failed if trigger throws", async () => {
+    const beforeBal = (await db.user.findUniqueOrThrow({ where: { id: userA.id } })).creditBalance;
+
+    vi.spyOn(authModule, "requireUser").mockResolvedValue({
+      id: userA.id,
+      clerkUserId: "mock_a",
+      creditBalance: beforeBal,
+      createdAt: new Date(),
+    });
+
+    vi.spyOn(magicaRun, "trigger").mockRejectedValue(new Error("Trigger service down"));
+
+    const req = new NextRequest("http://localhost:4000/v1/tools/crop_image/runs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        input: {
+          image_url: "https://example.com/source.jpg",
+          crop: { x: 0, y: 0, width: 200, height: 200 },
+        },
+      }),
+    });
+
+    const res = await postToolRunRoute(req, { params: Promise.resolve({ name: "crop_image" }) });
+    expect(res.status).toBe(500);
+
+    const inv = await db.toolInvocation.findFirst({
+      where: { userId: userA.id, status: "failed" },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(inv).toBeDefined();
+    expect(inv?.status).toBe("failed");
+
+    const refund = await db.creditLedger.findUnique({
+      where: { idempotencyKey: `refund:${inv?.id}` },
+    });
+    expect(refund).toBeDefined();
+    expect(refund?.amount).toBe(7_500n);
+
+    const balance = await db.user.findUnique({ where: { id: userA.id } });
+    expect(balance?.creditBalance).toBe(beforeBal);
+  });
+
+  it("POST rejects invalid input with 400", async () => {
+    vi.spyOn(authModule, "requireUser").mockResolvedValue({
+      id: userA.id,
+      clerkUserId: "mock_a",
+      creditBalance: 500_000n,
+      createdAt: new Date(),
+    });
+
+    const req = new NextRequest("http://localhost:4000/v1/tools/crop_image/runs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        input: { image_url: "not-a-valid-url" },
+      }),
+    });
+
+    const res = await postToolRunRoute(req, { params: Promise.resolve({ name: "crop_image" }) });
+    expect(res.status).toBe(400);
+  });
+
+  it("GET /v1/tools/:name/runs lists the user's history and isolates other users", async () => {
+    vi.spyOn(authModule, "requireUser").mockResolvedValue({
+      id: userA.id,
+      clerkUserId: "mock_a",
+      creditBalance: 500_000n,
+      createdAt: new Date(),
+    });
+
+    const reqA = new NextRequest("http://localhost:4000/v1/tools/crop_image/runs");
+    const resA = await getToolRunsRoute(reqA, { params: Promise.resolve({ name: "crop_image" }) });
+    expect(resA.status).toBe(200);
+
+    const bodyA = (await resA.json()) as { items: Array<Record<string, unknown>> };
+    expect(bodyA.items.length).toBeGreaterThanOrEqual(1);
+    expect(bodyA.items[0]).toMatchObject({
+      toolName: "crop_image",
+    });
+
+    // User B should not see User A's runs
+    vi.spyOn(authModule, "requireUser").mockResolvedValue({
+      id: userB.id,
+      clerkUserId: "mock_b",
+      creditBalance: 500_000n,
+      createdAt: new Date(),
+    });
+
+    const reqB = new NextRequest("http://localhost:4000/v1/tools/crop_image/runs");
+    const resB = await getToolRunsRoute(reqB, { params: Promise.resolve({ name: "crop_image" }) });
+    expect(resB.status).toBe(200);
+
+    const bodyB = (await resB.json()) as { items: Array<Record<string, unknown>> };
+    expect(bodyB.items.length).toBe(0);
+  });
+
+  it("GET /v1/tool-runs/:id returns run status, mints reload token, and enforces ownership", async () => {
+    const inv = await db.toolInvocation.create({
+      data: {
+        userId: userA.id,
+        runId: null,
+        triggerRunId: "trig_reload_test_1",
+        toolCallId: "direct_test_ownership",
+        order: 0,
+        toolName: "crop_image",
+        status: "succeeded",
+        input: { image_url: "https://example.com/pic.jpg" },
+        output: { image_url: "https://example.com/cropped.jpg" },
+        credits: 5_000n,
+        durationMs: 1200,
+        idempotencyKey: `idem_ownership_${randomUUID()}`,
+      },
+    });
+
+    const tokenSpy = vi.spyOn(auth, "createPublicToken").mockResolvedValue("tok_reload_fresh");
+
+    vi.spyOn(authModule, "requireUser").mockResolvedValue({
+      id: userA.id,
+      clerkUserId: "mock_a",
+      creditBalance: 500_000n,
+      createdAt: new Date(),
+    });
+
+    const reqOwner = new NextRequest(`http://localhost:4000/v1/tool-runs/${inv.id}`);
+    const resOwner = await getToolRunRoute(reqOwner, { params: Promise.resolve({ id: inv.id }) });
+    expect(resOwner.status).toBe(200);
+
+    const data = await resOwner.json();
+    expect(data).toMatchObject({
+      id: inv.id,
+      toolName: "crop_image",
+      status: "succeeded",
+      credits: 5_000,
+      durationMs: 1200,
+      triggerRunId: "trig_reload_test_1",
+      accessToken: "tok_reload_fresh",
+      realtime: {
+        runId: "trig_reload_test_1",
+        accessToken: "tok_reload_fresh",
+      },
+      assets: [{ type: "image", url: "https://example.com/cropped.jpg" }],
+    });
+    expect(tokenSpy).toHaveBeenCalledWith({
+      scopes: { read: { runs: ["trig_reload_test_1"] } },
+    });
+
+    // Another user requesting the run gets 404
+    vi.spyOn(authModule, "requireUser").mockResolvedValue({
+      id: userB.id,
+      clerkUserId: "mock_b",
+      creditBalance: 500_000n,
+      createdAt: new Date(),
+    });
+
+    const reqOther = new NextRequest(`http://localhost:4000/v1/tool-runs/${inv.id}`);
+    const resOther = await getToolRunRoute(reqOther, { params: Promise.resolve({ id: inv.id }) });
+    expect(resOther.status).toBe(404);
   });
 });

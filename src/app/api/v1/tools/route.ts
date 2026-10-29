@@ -6,6 +6,6 @@ import { route } from "@/lib/http";
 
 export const GET = route(async (req) => {
   await requireUser(req);
-  const tools = listPublicTools();
+  const tools = await listPublicTools();
   return NextResponse.json(ListToolsResponse.parse(tools));
 });

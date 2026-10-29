@@ -1,6 +1,7 @@
 import { SAFE_ERROR_MESSAGES } from "@/lib/constants";
 import { env } from "@/lib/env";
 import { AppError } from "@/lib/errors";
+import { logger } from "@/lib/logger";
 
 export type MagicaRunResponse = {
   id: string;
@@ -125,4 +126,55 @@ export async function getRun(
   }
 
   return (await res.json()) as MagicaRunResponse;
+}
+
+const estimateCache = new Map<string, { value: number; expiresAt: number }>();
+const CACHE_TTL_MS = 60 * 60 * 1000;
+
+export function clearEstimateCache() {
+  estimateCache.clear();
+}
+
+export async function estimateNodeCredits(params: {
+  nodeType: string;
+  subModelId?: string;
+  data?: Record<string, unknown>;
+  fallback: number;
+}): Promise<number> {
+  const cacheKey = `${params.nodeType}:${params.subModelId || ""}:${JSON.stringify(params.data ?? {})}`;
+  const cached = estimateCache.get(cacheKey);
+  if (cached && Date.now() < cached.expiresAt) {
+    return cached.value;
+  }
+
+  try {
+    const url = `${baseUrl()}/v1/nodes/estimate-credits`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: magicaHeaders(),
+      body: JSON.stringify({
+        nodes: [
+          {
+            type: params.nodeType,
+            subModelId: params.subModelId,
+            data: params.data ?? {},
+          },
+        ],
+      }),
+    });
+
+    if (res.ok) {
+      const json = (await res.json()) as { estimates?: Array<{ microcredits?: number }> };
+      const microcredits = json.estimates?.[0]?.microcredits;
+      if (typeof microcredits === "number" && microcredits >= 0) {
+        estimateCache.set(cacheKey, { value: microcredits, expiresAt: Date.now() + CACHE_TTL_MS });
+        return microcredits;
+      }
+    }
+    logger.warn("Magica estimate-credits call returned non-ok status, falling back to constant", { nodeType: params.nodeType, status: res.status });
+  } catch (err) {
+    logger.warn("Magica estimate-credits call failed, falling back to constant", { nodeType: params.nodeType, err: String(err) });
+  }
+
+  return params.fallback;
 }

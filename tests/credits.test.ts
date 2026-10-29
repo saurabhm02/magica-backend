@@ -31,6 +31,7 @@ async function createTestTool(targetUserId: string) {
   });
   const tool = await db.toolInvocation.create({
     data: {
+      userId: targetUserId,
       runId: sent.run.id,
       toolCallId: randomUUID(),
       order: 0,
@@ -438,6 +439,7 @@ describe("Credits System", { timeout: 60_000 }, () => {
     // 5. Also test: actual > estimate causing negative balance
     const tool2 = await db.toolInvocation.create({
       data: {
+        userId: testUser.id,
         runId: run.id,
         toolCallId: randomUUID(),
         order: 1,
@@ -467,6 +469,7 @@ describe("Credits System", { timeout: 60_000 }, () => {
     // Next reserve must be blocked due to negative balance
     const tool3 = await db.toolInvocation.create({
       data: {
+        userId: testUser.id,
         runId: run.id,
         toolCallId: randomUUID(),
         order: 2,
@@ -511,6 +514,7 @@ describe("Credits System", { timeout: 60_000 }, () => {
     // Create a tool invocation and reserve credits directly under this run, simulating a hold that was placed right before a crash
     const toolRec = await db.toolInvocation.create({
       data: {
+        userId: testUser.id,
         runId,
         toolCallId: "call_crash_test",
         order: 0,

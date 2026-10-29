@@ -3,10 +3,10 @@ import { SafeError } from "./errors";
 
 export const CropImageInput = z.object({
   image_url: z.string().url().describe("Public URL of the image to crop"),
-  x_percent: z.number().min(0).max(100).optional().describe("Horizontal start position (0-100%)"),
-  y_percent: z.number().min(0).max(100).optional().describe("Vertical start position (0-100%)"),
-  width_percent: z.number().min(0).max(100).optional().describe("Crop width (0-100%)"),
-  height_percent: z.number().min(0).max(100).optional().describe("Crop height (0-100%)"),
+  x_percent: z.number().min(0).max(100).meta({ default: 0 }).optional().describe("Horizontal start position (0-100%)"),
+  y_percent: z.number().min(0).max(100).meta({ default: 0 }).optional().describe("Vertical start position (0-100%)"),
+  width_percent: z.number().min(0).max(100).meta({ default: 100 }).optional().describe("Crop width (0-100%)"),
+  height_percent: z.number().min(0).max(100).meta({ default: 100 }).optional().describe("Crop height (0-100%)"),
   x_px: z.number().int().nonnegative().optional().describe("Exact horizontal start position in pixels"),
   y_px: z.number().int().nonnegative().optional().describe("Exact vertical start position in pixels"),
   width_px: z.number().int().positive().optional().describe("Exact crop width in pixels"),

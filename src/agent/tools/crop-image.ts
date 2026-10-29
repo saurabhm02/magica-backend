@@ -1,3 +1,4 @@
+import { estimateNodeCredits } from "@/agent/magica";
 import { CropImageInput, CropImageOutput } from "@/contracts/tools";
 import { CREDIT_COSTS } from "@/lib/constants";
 import type { MagicaTool } from "@/lib/types";
@@ -26,15 +27,28 @@ export function buildCropImageParams(input: CropImageInput): Record<string, unkn
   return params;
 }
 
+export const CROP_IMAGE_PRICING_LINES = [
+  "Fixed: 5,000 microcredits per crop (0.005M)",
+];
+
+export async function estimateCropImageCredits(input?: Partial<CropImageInput>): Promise<number> {
+  return estimateNodeCredits({
+    nodeType: "crop_image",
+    data: input ? buildCropImageParams(input as CropImageInput) : {},
+    fallback: CREDIT_COSTS.crop_image,
+  });
+}
+
 export const cropImageTool: MagicaTool<CropImageInput, CropImageOutput> = {
   name: "crop_image",
   displayName: "Crop Image",
   description:
     "Crop an image using percentage coordinates (x_percent, y_percent, width_percent, height_percent), exact pixel dimensions (width_px, height_px, optional x_px, y_px), or pixel bounding box (crop.{x,y,width,height}).",
   category: "image",
+  pricingLines: CROP_IMAGE_PRICING_LINES,
   inputSchema: CropImageInput,
   renderKey: "image-result",
-  estimateCredits: () => CREDIT_COSTS.crop_image,
+  estimateCredits: (input) => estimateCropImageCredits(input),
   assets: (output) => [{ type: "image", url: output.image_url }],
   describe: (input) => {
     let detail = "square crop";
