@@ -1,0 +1,63 @@
+---
+title: "Errors & Error Codes"
+description: "Standard error envelope format, retry behavior, and complete error code reference."
+---
+
+All API errors return a consistent, structured JSON envelope with an actionable error code and a `traceId` for debugging.
+
+## Error Response Envelope
+
+```json
+{
+  "error": {
+    "code": "INSUFFICIENT_CREDITS",
+    "message": "You need 89,029 microcredits to run this tool, but have 45,000.",
+    "retryable": false,
+    "traceId": "trace_998877aabbcc"
+  }
+}
+```
+
+### Fields
+
+- `code` (`string`): The machine-readable error identifier from the table below.
+- `message` (`string`): A safe, user-friendly description of what went wrong.
+- `retryable` (`boolean`): If `true`, the client may safely retry the exact same request after a brief delay. If `false`, repeating the request without changes will fail again.
+- `traceId` (`string`): A unique request identifier logged across server tasks for support and troubleshooting.
+
+---
+
+## Error Code Reference
+
+Every `ErrorCode` from `src/contracts/errors.ts` is described below:
+
+| Error Code | HTTP Status | Retryable | Description |
+| :--- | :--- | :--- | :--- |
+| `UNAUTHORIZED` | 401 | `false` | Missing, invalid, or expired authentication token. |
+| `NOT_FOUND` | 404 | `false` | The requested chat, message, run, tool, or waitpoint does not exist or belongs to another user. |
+| `VALIDATION_FAILED` | 422 | `false` | The request body or query parameters did not match the expected Zod schema. |
+| `RATE_LIMITED` | 429 | `true` | Too many requests sent to the server. Slow down and retry. |
+| `RUN_ALREADY_ACTIVE` | 409 | `false` | Another message or tool run is currently active for this chat. |
+| `INSUFFICIENT_CREDITS` | 402 | `false` | Your available credit balance is too low for the required safety reserve hold. |
+| `CREDITS_EXHAUSTED` | 402 | `false` | Upstream Magica provider balance is exhausted. |
+| `LLM_RATE_LIMITED` | 503 | `true` | The upstream LLM provider is currently rate limited. |
+| `LLM_UNAVAILABLE` | 503 | `true` | The LLM provider is temporarily unreachable or returning 5xx errors. |
+| `LLM_EMPTY_STREAM` | 502 | `true` | The LLM stream closed without emitting any content or tool calls. |
+| `LLM_MALFORMED_TOOL_CALL`| 502 | `false` | The model emitted invalid tool call syntax that could not be parsed. |
+| `MAX_TURNS` | 500 | `false` | The agent exceeded the maximum allowed turns per message step without finishing. |
+| `MAGICA_UNAUTHORIZED` | 500 | `false` | Upstream Magica API key is invalid or missing. |
+| `MAGICA_RATE_LIMITED` | 503 | `true` | Upstream Magica service rate limit hit. |
+| `MAGICA_TIMEOUT` | 504 | `true` | Magica node execution timed out before completion. |
+| `MAGICA_RUN_FAILED` | 502 | `false` | Magica node failed to execute with the given inputs. |
+| `TOOL_INPUT_INVALID` | 422 | `false` | Input arguments failed schema validation or plan mode blocked paid execution before approval. |
+| `SKILL_NOT_FOUND` | 404 | `false` | The requested skill name does not exist in the skill registry. |
+| `SKILL_INVALID_PATH` | 400 | `false` | Attempted to access an invalid or restricted skill directory. |
+| `SKILL_CHANGED` | 409 | `false` | The skill content hash on disk changed unexpectedly during execution. |
+| `WAITPOINT_EXPIRED` | 410 | `false` | The waitpoint timed out after 15 minutes of user inactivity. |
+| `WAITPOINT_ALREADY_RESOLVED`| 409 | `false` | This waitpoint token has already been answered, skipped, or completed. |
+| `UPLOAD_TOO_LARGE` | 413 | `false` | Uploaded file size exceeds the maximum allowed limit. |
+| `UPLOAD_TYPE_NOT_ALLOWED` | 415 | `false` | Uploaded file MIME type is not supported. |
+| `UPLOAD_QUOTA_EXCEEDED` | 429 | `false` | Storage quota for user uploads has been exceeded. |
+| `STALE_RUN` | 500 | `false` | A run was recovered after crashing or stopping unexpectedly. |
+| `CANCELLED` | 499 | `false` | The run or tool invocation was cancelled by the user. |
+| `INTERNAL` | 500 | `false` | An unexpected internal error occurred. Check server logs with `traceId`. |

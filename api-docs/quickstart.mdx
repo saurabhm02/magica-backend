@@ -1,0 +1,174 @@
+---
+title: "Quickstart"
+description: "Send your first message and watch the agent respond in under 5 minutes."
+---
+
+Follow this step-by-step guide to create a chat, send a message to the agent, stream the response live, and read the conversation history.
+
+## 1. Create a Chat
+
+A chat is a container for messages and runs. Create one with `POST /chats`:
+
+```bash
+curl -X POST http://localhost:4000/api/v1/chats \
+  -H "Authorization: Bearer YOUR_CLERK_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Coffee Mug Campaign"
+  }'
+```
+
+Response:
+
+```json
+{
+  "id": "cmvtu12340000abcde",
+  "title": "Coffee Mug Campaign",
+  "pinned": false,
+  "createdAt": "2026-10-30T00:00:00.000Z",
+  "updatedAt": "2026-10-30T00:00:00.000Z"
+}
+```
+
+Save the `id` from the response. We refer to it as `CHAT_ID` below.
+
+## 2. Send a Message
+
+Send your prompt to `POST /chats/:chatId/messages`. Always include a unique `clientRequestId` for safe retries:
+
+```bash
+curl -X POST http://localhost:4000/api/v1/chats/cmvtu12340000abcde/messages \
+  -H "Authorization: Bearer YOUR_CLERK_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "Create a clean studio photo of a ceramic coffee mug on a marble table",
+    "clientRequestId": "client-req-001"
+  }'
+```
+
+Response:
+
+```json
+{
+  "chatId": "cmvtu12340000abcde",
+  "messageId": "msg_987654321",
+  "runId": "run_123456789",
+  "realtime": {
+    "runId": "run_trig_live_abc123",
+    "accessToken": "trig_pub_jwt_token_here"
+  }
+}
+```
+
+The response returns immediately. The agent runs in the background.
+
+## 3. Watch the Reply Live
+
+Use the returned `realtime` object (`runId` and read-only `accessToken`) to subscribe to live updates.
+
+In a React frontend, use Trigger.dev's hooks:
+
+```tsx
+import { useRealtimeRun, useRealtimeStream } from "@trigger.dev/react-hooks";
+
+export function AgentReply({ realtime }: { realtime: { runId: string; accessToken: string } }) {
+  // 1. Stream the assistant text token-by-token
+  const text = useRealtimeStream("text", {
+    runId: realtime.runId,
+    accessToken: realtime.accessToken,
+  });
+
+  // 2. Track run status and tool steps
+  const { run } = useRealtimeRun(realtime.runId, {
+    accessToken: realtime.accessToken,
+  });
+
+  const status = run?.metadata?.status ?? "thinking";
+  const tools = run?.metadata?.tools ?? [];
+
+  return (
+    <div>
+      <p>Status: {status}</p>
+      <div>
+        {tools.map((tool) => (
+          <div key={tool.id}>
+            <span>{tool.label}</span> ({tool.status})
+          </div>
+        ))}
+      </div>
+      <p>{text}</p>
+    </div>
+  );
+}
+```
+
+## 4. Read the Saved Messages
+
+After the run finishes, or when a user reloads the page, fetch the full conversation history from `GET /chats/:chatId/messages`:
+
+```bash
+curl -X GET "http://localhost:4000/api/v1/chats/cmvtu12340000abcde/messages?limit=10" \
+  -H "Authorization: Bearer YOUR_CLERK_TOKEN"
+```
+
+Response:
+
+```json
+{
+  "items": [
+    {
+      "id": "msg_assistant_1",
+      "chatId": "cmvtu12340000abcde",
+      "role": "assistant",
+      "status": "complete",
+      "content": [
+        {
+          "type": "tool_use",
+          "id": "call_1",
+          "name": "gpt_image_2",
+          "input": {
+            "prompt": "ceramic coffee mug on marble table, studio lighting",
+            "size": "1024x1024",
+            "quality": "Medium"
+          },
+          "label": "Generating image...",
+          "doneLabel": "generated an image"
+        },
+        {
+          "type": "tool_result",
+          "toolUseId": "call_1",
+          "output": {
+            "images": ["https://assets.magica.ai/generated/mug.png"]
+          },
+          "credits": 68484
+        },
+        {
+          "type": "text",
+          "text": "Here is your studio photo of the ceramic coffee mug on a marble table."
+        }
+      ],
+      "clientRequestId": null,
+      "createdAt": "2026-10-30T00:00:05.000Z",
+      "updatedAt": "2026-10-30T00:00:09.000Z"
+    },
+    {
+      "id": "msg_user_1",
+      "chatId": "cmvtu12340000abcde",
+      "role": "user",
+      "status": "complete",
+      "content": [
+        {
+          "type": "text",
+          "text": "Create a clean studio photo of a ceramic coffee mug on a marble table"
+        }
+      ],
+      "clientRequestId": "client-req-001",
+      "createdAt": "2026-10-30T00:00:00.000Z",
+      "updatedAt": "2026-10-30T00:00:00.000Z"
+    }
+  ],
+  "nextCursor": null
+}
+```
+
+That is the entire lifecycle: create chat, dispatch message, stream live, read history.

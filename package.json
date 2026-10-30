@@ -9,6 +9,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:generate": "prisma generate",
     "sync:contracts": "node ../client/scripts/sync-contracts.ts",
+    "docs:openapi": "bun scripts/build-openapi.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "eslint ."

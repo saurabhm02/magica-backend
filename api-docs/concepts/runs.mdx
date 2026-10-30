@@ -1,0 +1,103 @@
+---
+title: "Agent Runs"
+description: "How agent execution works: states, single-active-run rule, cancellation, and reloads."
+---
+
+Whenever you send a message, the system creates an **Agent Run**. The run orchestrates LLM reasoning, skill loading, tool execution, and user waitpoints.
+
+## Run Lifecycle
+
+An agent run moves through these statuses:
+
+```
+[ queued ] ───► [ running ] ───► [ waiting ] (optional human input)
+                     │                 │
+                     ▼                 ▼
+          [ succeeded / failed / cancelled ]
+```
+
+| Status | Meaning |
+| :--- | :--- |
+| `queued` | The run is created and queued for background dispatch. |
+| `running` | The agent is actively generating text or executing tools. |
+| `waiting` | Execution is paused at a waitpoint waiting for user input (options or plan approval). No compute is consumed. |
+| `succeeded` | The turn finished normally and assistant message content is saved. |
+| `failed` | The run stopped due to an error (e.g. rate limits or model failure). |
+| `cancelled` | The user stopped the run before completion. |
+
+## One Active Run Per Chat
+
+Each chat can have only **one** active run (`queued`, `running`, or `waiting`) at any time.
+
+If you attempt to send a new message while a run is active, the API returns a `409 Conflict`:
+
+```json
+{
+  "error": {
+    "code": "RUN_ALREADY_ACTIVE",
+    "message": "Another message is being processed. Please wait.",
+    "retryable": false,
+    "traceId": "trace_123"
+  }
+}
+```
+
+<Note>
+  **Exception**: If the active run is in `waiting` status for a **plan**, sending a normal chat message does not return 409. Instead, it completes the plan waitpoint with `request_changes`, allowing users to reply with questions or requested edits.
+</Note>
+
+## Stopping a Run (Cancel)
+
+Users can cancel an in-flight run at any time by calling `POST /chats/:chatId/runs/:runId/cancel`:
+
+```bash
+curl -X POST http://localhost:4000/api/v1/chats/cmvtu12340000abcde/runs/run_123456789/cancel \
+  -H "Authorization: Bearer YOUR_CLERK_TOKEN"
+```
+
+Response:
+
+```json
+{
+  "runId": "run_123456789",
+  "status": "cancelled"
+}
+```
+
+Cancelling immediately stops agent processing, marks in-progress tool steps as cancelled, and refunds any reserved credit hold back to the user's balance.
+
+## Reloading (Active Run)
+
+When a user refreshes the page or reopens an existing chat, call `GET /chats/:chatId/active-run` to detect whether an execution is still going:
+
+```bash
+curl -X GET http://localhost:4000/api/v1/chats/cmvtu12340000abcde/active-run \
+  -H "Authorization: Bearer YOUR_CLERK_TOKEN"
+```
+
+If a run is active, it returns the run status, a fresh read-only Trigger.dev realtime token, and any pending waitpoint:
+
+```json
+{
+  "runId": "run_123456789",
+  "triggerRunId": "run_trig_live_abc123",
+  "accessToken": "trig_pub_fresh_token",
+  "status": "waiting",
+  "waitpoint": {
+    "id": "wp_001",
+    "type": "options",
+    "status": "pending",
+    "message": "Which style would you like?",
+    "questions": [
+      {
+        "id": "q_style",
+        "question": "Which style would you like?",
+        "type": "choice"
+      }
+    ],
+    "expiresAt": "2026-10-30T00:15:00.000Z"
+  }
+}
+```
+
+If no run is active, the endpoint returns `null` with a `200 OK` status.

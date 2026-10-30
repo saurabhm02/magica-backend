@@ -1,0 +1,159 @@
+---
+title: "Human Waitpoints & Plan Mode"
+description: "Pause agent execution for human choices or full step-by-step plan approval."
+---
+
+Waitpoints allow the AI agent to pause its execution, surrender compute, and wait for human input.
+
+When an agent hits a waitpoint:
+- The run status transitions to `waiting`.
+- Background compute is suspended (zero cost while waiting).
+- A waitpoint card is presented to the user with questions or a plan preview.
+- Answering the waitpoint resumes the run immediately.
+
+There are two waitpoint types: **Options** and **Plan**.
+
+---
+
+## 1. Options Waitpoint (`request_user_options`)
+
+When key creative decisions are required (e.g. style choice, aspect ratio, or branding tone), the agent invokes `request_user_options` to ask 1 to 4 questions.
+
+### Question Shape
+
+```json
+{
+  "message": "Which visual style fits your brand?",
+  "questions": [
+    {
+      "id": "q_style",
+      "question": "Choose a style",
+      "type": "choice",
+      "options": [
+        {
+          "id": "minimal",
+          "label": "Clean Minimal",
+          "description": "Studio lighting, neutral white backdrop",
+          "recommended": true
+        },
+        {
+          "id": "vibrant",
+          "label": "Bold & Vibrant",
+          "description": "High saturation, colored gel lighting"
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Answering an Options Waitpoint
+
+Submit the user's answers via `POST /chats/:chatId/waitpoints/:id/respond`:
+
+```bash
+curl -X POST http://localhost:4000/api/v1/chats/cmvtu12340000abcde/waitpoints/wp_abc123/respond \
+  -H "Authorization: Bearer YOUR_CLERK_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "answers": [
+      {
+        "questionId": "q_style",
+        "answer": "Clean Minimal"
+      }
+    ]
+  }'
+```
+
+Response:
+
+```json
+{
+  "id": "wp_abc123",
+  "status": "answered",
+  "answers": [
+    {
+      "questionId": "q_style",
+      "answer": "Clean Minimal"
+    }
+  ]
+}
+```
+
+### Skipping an Options Waitpoint
+
+Users can skip answering:
+
+```bash
+curl -X POST http://localhost:4000/api/v1/chats/cmvtu12340000abcde/waitpoints/wp_abc123/respond \
+  -H "Authorization: Bearer YOUR_CLERK_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "skip": true
+  }'
+```
+
+The agent continues using sensible defaults (often the option marked `recommended: true`).
+
+---
+
+## 2. Plan Mode Waitpoint (`submit_plan`)
+
+When sending a message with `"planMode": true`, the agent is instructed:
+> *"Research first (check models and prices), then call submit_plan. Don't run any paid tool until the plan is approved."*
+
+The agent analyzes the task and calls `submit_plan`. The server verifies live pricing for each step and creates a `"plan"` waitpoint.
+
+### Approving with Run All
+
+Executes all steps sequentially:
+
+```bash
+curl -X POST http://localhost:4000/api/v1/chats/cmvtu12340000abcde/waitpoints/wp_plan123/respond \
+  -H "Authorization: Bearer YOUR_CLERK_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action": "run_all"
+  }'
+```
+
+### Approving with Step by Step
+
+Approves the plan, but pauses after each step with a small confirmation waitpoint asking `"Continue"` or `"Stop"`:
+
+```bash
+curl -X POST http://localhost:4000/api/v1/chats/cmvtu12340000abcde/waitpoints/wp_plan123/respond \
+  -H "Authorization: Bearer YOUR_CLERK_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action": "step_by_step"
+  }'
+```
+
+### Requesting Changes
+
+If the user wants modifications before spending credits:
+
+```bash
+curl -X POST http://localhost:4000/api/v1/chats/cmvtu12340000abcde/waitpoints/wp_plan123/respond \
+  -H "Authorization: Bearer YOUR_CLERK_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "request_changes": "Please use a dark marble background and make it 3 steps"
+  }'
+```
+
+The agent receives the feedback, updates the plan, and calls `submit_plan` again with a revised card.
+
+<Tip>
+  **Chat Reply Shortcut**: While a plan waitpoint is waiting, sending a normal chat message via `POST /chats/:chatId/messages` automatically completes the waitpoint as `request_changes` with that message text. No 409 conflict is thrown.
+</Tip>
+
+---
+
+## Waitpoint Timeouts
+
+Waitpoints expire after 15 minutes of inactivity. When expired:
+- The waitpoint status becomes `expired`.
+- The run completes cleanly.
+- The user can reply anytime in the chat to continue.

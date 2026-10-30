@@ -1,0 +1,111 @@
+---
+title: "Realtime Streaming"
+description: "How live text streaming, tool step metadata, and read-only tokens work."
+---
+
+When you send a message or trigger a tool, Magica returns a `realtime` object:
+
+```json
+{
+  "realtime": {
+    "runId": "run_trig_live_abc123",
+    "accessToken": "trig_pub_jwt_token_here"
+  }
+}
+```
+
+This token is a **read-only public JWT**. It allows clients to safely stream updates directly from Trigger.dev over WebSockets without exposing server API keys or database access.
+
+## The Two Live Channels
+
+Clients subscribe to two distinct channels using `@trigger.dev/react-hooks` or the Trigger.dev client SDK:
+
+### 1. Text Stream (`"text"`)
+
+Streams the assistant's written response token-by-token:
+
+```tsx
+import { useRealtimeStream } from "@trigger.dev/react-hooks";
+
+const text = useRealtimeStream("text", {
+  runId: realtime.runId,
+  accessToken: realtime.accessToken,
+});
+```
+
+As the LLM emits tokens, `text` updates instantly in your component without waiting for tool runs or step completion.
+
+### 2. Run Metadata (`useRealtimeRun`)
+
+Tracks the agent's phase, active tool calls, generated assets, and plan progress:
+
+```tsx
+import { useRealtimeRun } from "@trigger.dev/react-hooks";
+
+const { run } = useRealtimeRun(realtime.runId, {
+  accessToken: realtime.accessToken,
+});
+
+const metadata = run?.metadata;
+```
+
+#### Metadata Shape
+
+The metadata object updates throughout execution:
+
+```json
+{
+  "status": "working",
+  "thinkingStartedAt": "2026-10-30T00:00:00.000Z",
+  "tools": [
+    {
+      "id": "cmvtu12345",
+      "name": "gpt_image_2",
+      "status": "running",
+      "renderKey": "image-result",
+      "label": "Generating image...",
+      "doneLabel": "generated an image",
+      "model": "GPT Image 2",
+      "startedAt": "2026-10-30T00:00:01.000Z"
+    }
+  ],
+  "assets": [
+    {
+      "type": "image",
+      "url": "https://assets.magica.ai/generated/mug.png",
+      "toolInvocationId": "cmvtu12345"
+    }
+  ],
+  "plan": {
+    "title": "Product Ad Campaign",
+    "shortTitle": "Product Ad",
+    "done": 1,
+    "total": 2,
+    "steps": [
+      { "title": "Generate product photo", "status": "done" },
+      { "title": "Crop for story", "status": "pending" }
+    ]
+  }
+}
+```
+
+## Security: Scoped Read-Only Tokens
+
+The `accessToken` returned by the API is generated with read-only permissions scoped specifically to that single run ID:
+
+- Clients cannot read other users' runs or chats.
+- Clients cannot trigger tasks, modify metadata, or cancel tasks directly.
+- All actions (such as cancelling or answering waitpoints) must go through the authenticated REST API.
+
+## REST Fallback
+
+Realtime is the normal path, so you shouldn't need to poll. Use REST only when the live
+connection drops and won't come back:
+
+1. Every few seconds (our app uses 2.5s), call `GET /chats/:chatId/active-run`. It
+   returns the run's `status`, any pending `waitpoint`, and a fresh read-only token, so
+   you can try to reconnect.
+2. When it returns `null`, the run has finished. Load the saved reply with
+   `GET /chats/:chatId/messages?limit=1` and stop checking.
+
+The saved messages are always the final answer, even if you missed some live updates.

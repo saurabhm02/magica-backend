@@ -1,0 +1,50 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "name": "Magica Agent Chat API",
+  "theme": "mint",
+  "appearance": {
+    "default": "dark"
+  },
+  "colors": {
+    "primary": "#4F46E5",
+    "light": "#6366F1",
+    "dark": "#4338CA"
+  },
+  "api": {
+    "openapi": "openapi.json"
+  },
+  "navigation": {
+    "groups": [
+      {
+        "group": "Getting Started",
+        "pages": [
+          "introduction",
+          "quickstart"
+        ]
+      },
+      {
+        "group": "Concepts",
+        "pages": [
+          "concepts/runs",
+          "concepts/realtime",
+          "concepts/tools",
+          "concepts/skills",
+          "concepts/credits",
+          "concepts/waitpoints",
+          "concepts/errors",
+          "concepts/pagination-and-idempotency"
+        ]
+      },
+      {
+        "group": "Integrations",
+        "pages": [
+          "webhooks"
+        ]
+      },
+      {
+        "group": "API Reference",
+        "openapi": "openapi.json"
+      }
+    ]
+  }
+}

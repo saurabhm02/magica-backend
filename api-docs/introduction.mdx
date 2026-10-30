@@ -1,0 +1,67 @@
+---
+title: "Introduction"
+description: "Build AI-powered chats, run creative media tools, and stream progress live."
+---
+
+The Magica Agent Chat API lets you talk to an autonomous AI agent, run creative tools like image generation and video merging, and watch results stream in real time.
+
+You can ask the agent to create media from natural language, inspect step-by-step tool execution, pause for human choices, and audit every credit spent.
+
+## Base URL
+
+During local development, all endpoints live at:
+
+```http
+http://localhost:4000/api/v1
+```
+
+<Note>
+  When deployed to production, this base URL will change to your deployed domain (for example, `https://api.magica.ai/api/v1`). Keep the base URL configurable in your client code.
+</Note>
+
+## Authentication
+
+Every request (except `GET /health`) requires a Bearer token in the `Authorization` header.
+
+Today, authentication uses a Clerk session token:
+
+```http
+Authorization: Bearer <clerk_session_token>
+```
+
+Here is a quick check to verify your token:
+
+```bash
+curl -X GET http://localhost:4000/api/v1/me \
+  -H "Authorization: Bearer YOUR_CLERK_TOKEN"
+```
+
+A valid token returns `200 OK` with your user details:
+
+```json
+{
+  "id": "usr_cuid12345",
+  "createdAt": "2026-10-30T00:00:00.000Z"
+}
+```
+
+If the token is missing or expired, the API returns `401 Unauthorized`:
+
+```json
+{
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "Missing or invalid session token",
+    "retryable": false,
+    "traceId": "trace_abc123"
+  }
+}
+```
+
+## Core Capabilities
+
+- **Agent Chat**: Start conversations, send messages, and let the agent plan and run tools autonomously.
+- **Live Realtime Streams**: Receive streamed text tokens and live step metadata via Trigger.dev public tokens.
+- **Direct Tool Runs**: Execute image generation (`gpt_image_2`), image cropping (`crop_image`), or video merging (`merge_videos`) directly without LLM prompts.
+- **Fair Credit Accounting**: Holds an estimate before running paid tools, settles the exact amount after completion, and refunds unspent credits.
+- **Human Waitpoints**: Pause runs for user multiple-choice options or plan mode approvals.

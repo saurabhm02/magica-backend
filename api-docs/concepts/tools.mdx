@@ -1,0 +1,177 @@
+---
+title: "Tools & Execution"
+description: "The 3 Magica tools, chained workflows in chat, and direct API tool execution."
+---
+
+Magica offers specialized creative media tools that can be invoked autonomously by the agent in chat, or executed directly via REST without LLM prompts.
+
+## The 3 Magica Tools
+
+### 1. `gpt_image_2` (Image Generation & Editing)
+
+Generates new images from text or edits existing images.
+
+#### Input Fields (`GptImage2Input`)
+
+| Field | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `prompt` | `string` | *required* | Text description of the image to generate or edit. |
+| `size` | `string` | `"1024x1024"` | Output preset: `"1024x1024"`, `"1536x1024"`, `"1024x1536"`, `"2048x2048"`, `"2048x1152"`, `"3840x2160"`, `"2160x3840"`, or `"Auto"`. |
+| `quality` | `string` | `"Medium"` | `"Low"`, `"Medium"`, or `"High"`. |
+| `background` | `string` | `"Auto"` | `"Auto"` or `"Opaque"`. |
+| `n` | `integer` | `1` | Number of images to generate (1 to 4). |
+| `output_format` | `string` | `"PNG"` | `"PNG"`, `"JPEG"`, or `"WebP"`. |
+| `mode` | `string` | `"text"` | `"text"` for new images, `"edit"` when modifying existing images. |
+| `uploadedImages`| `string[]`| `[]` | Up to 10 source image URLs (required when `mode` is `"edit"`). |
+
+#### Output Fields (`GptImage2Output`)
+
+```json
+{
+  "images": [
+    "https://assets.magica.ai/generated/mug_1024.png"
+  ]
+}
+```
+
+---
+
+### 2. `crop_image` (Image Cropping)
+
+Crops an existing image using either percentage coordinates or exact pixel dimensions.
+
+#### Input Fields (`CropImageInput`)
+
+| Field | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `image_url` | `string` | *required* | Public URL of the source image to crop. |
+| `x_percent` | `number` | `0` | Horizontal start position (0–100%). |
+| `y_percent` | `number` | `0` | Vertical start position (0–100%). |
+| `width_percent` | `number` | `100` | Crop width (0–100%). |
+| `height_percent`| `number` | `100` | Crop height (0–100%). |
+| `crop` | `object` | `optional` | Exact pixel bounding box `{ x, y, width, height }`. |
+| `width_px` | `integer`| `optional` | Exact crop width in pixels. |
+| `height_px` | `integer`| `optional` | Exact crop height in pixels. |
+
+#### Output Fields (`CropImageOutput`)
+
+```json
+{
+  "image_url": "https://assets.magica.ai/cropped/mug_story.png"
+}
+```
+
+---
+
+### 3. `merge_videos` (Video Concatenation)
+
+Merges 2 to 100 ordered videos into a single continuous video with optional transitions.
+
+#### Input Fields (`MergeVideosInput`)
+
+| Field | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `video_urls` | `string[]` | *required* | Ordered list of 2 to 100 video URLs to merge. |
+| `transition` | `string` | `"none"` | Transition effect: `"none"`, `"fade"`, or `"dissolve"`. |
+
+#### Output Fields (`MergeVideosOutput`)
+
+```json
+{
+  "video_url": "https://assets.magica.ai/merged/final_reel.mp4"
+}
+```
+
+---
+
+## Chained Tool Workflows
+
+In chat, the agent can chain tools automatically.
+
+For example, when a user asks:
+> *"Generate a coffee mug ad and crop it for an Instagram 9:16 story."*
+
+1. **Step 1**: The agent calls `gpt_image_2` with `{ "prompt": "coffee mug ad on marble table" }`.
+2. **Output 1**: `https://assets.magica.ai/generated/mug.png`
+3. **Step 2**: The agent inspects Output 1 and automatically supplies it to `crop_image` as `image_url`, setting `width_percent: 56.25` and `height_percent: 100`.
+4. **Final Result**: The user receives both the original master image and the cropped story asset in one conversational turn.
+
+---
+
+## Direct Tool Runs (No LLM)
+
+If you want to use Magica's media tools as a programmatic API without conversational prompts, use the direct tool run endpoints.
+
+### 1. Trigger Direct Run
+
+Call `POST /tools/:name/runs`:
+
+```bash
+curl -X POST http://localhost:4000/api/v1/tools/crop_image/runs \
+  -H "Authorization: Bearer YOUR_CLERK_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input": {
+      "image_url": "https://assets.magica.ai/generated/mug.png",
+      "x_percent": 10,
+      "y_percent": 0,
+      "width_percent": 80,
+      "height_percent": 100
+    }
+  }'
+```
+
+Response:
+
+```json
+{
+  "runId": "inv_cuid998877",
+  "realtime": {
+    "runId": "run_trig_direct_123",
+    "accessToken": "trig_pub_jwt_token"
+  }
+}
+```
+
+Like chat messages, direct tool runs return immediately with a `realtime` token for WebSocket updates.
+
+### 2. Inspect Direct Run Result
+
+To poll or reload an existing direct run, call `GET /tool-runs/:id`:
+
+```bash
+curl -X GET http://localhost:4000/api/v1/tool-runs/inv_cuid998877 \
+  -H "Authorization: Bearer YOUR_CLERK_TOKEN"
+```
+
+Response:
+
+```json
+{
+  "id": "inv_cuid998877",
+  "runId": "inv_cuid998877",
+  "toolName": "crop_image",
+  "status": "succeeded",
+  "credits": 5000,
+  "durationMs": 1420,
+  "output": {
+    "image_url": "https://assets.magica.ai/cropped/mug_story.png"
+  },
+  "assets": [
+    {
+      "type": "image",
+      "url": "https://assets.magica.ai/cropped/mug_story.png"
+    }
+  ],
+  "createdAt": "2026-10-30T00:00:00.000Z"
+}
+```
+
+### 3. List Tool Run History
+
+View past direct runs for a tool with `GET /tools/:name/runs?limit=20`:
+
+```bash
+curl -X GET "http://localhost:4000/api/v1/tools/crop_image/runs?limit=20" \
+  -H "Authorization: Bearer YOUR_CLERK_TOKEN"
+```

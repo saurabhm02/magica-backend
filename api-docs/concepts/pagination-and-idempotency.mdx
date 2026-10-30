@@ -1,0 +1,65 @@
+---
+title: "Pagination & Idempotency"
+description: "Cursor-based pagination across lists and safe request retries with clientRequestId."
+---
+
+All listing endpoints use cursor-based pagination, and all mutating endpoints support idempotency to ensure network retries never produce duplicate charges or messages.
+
+## Cursor-Based Pagination
+
+Endpoints that return collections (such as chats, messages, ledger entries, tool runs, and assets) return a standard page envelope:
+
+```json
+{
+  "items": [ ... ],
+  "nextCursor": "eyJjcmVhdGVkQXQiOiIyMDI2LTEwLTMwVDAwOjAwOjAwLjAwMFoiLCJpZCI6ImNtdnQxMjMifQ=="
+}
+```
+
+### Query Parameters
+
+| Parameter | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `limit` | `integer` | `20` | Number of items to return. Minimum `1`, maximum `50`. |
+| `cursor` | `string` | `null` | The `nextCursor` string returned from the previous page. |
+
+### How to Paginate
+
+1. Make the initial request with `limit=20`:
+   ```bash
+   curl -X GET "http://localhost:4000/api/v1/chats?limit=20" \
+     -H "Authorization: Bearer YOUR_CLERK_TOKEN"
+   ```
+2. If `nextCursor` is non-null, fetch the next batch by passing `cursor`:
+   ```bash
+   curl -X GET "http://localhost:4000/api/v1/chats?limit=20&cursor=eyJjcmVhdGVkQXQi..." \
+     -H "Authorization: Bearer YOUR_CLERK_TOKEN"
+   ```
+3. When `nextCursor` is `null`, you have reached the end of the dataset.
+
+---
+
+## Idempotency with `clientRequestId`
+
+When sending messages via `POST /chats/:chatId/messages`, you must include a `clientRequestId`:
+
+```json
+{
+  "content": "Generate a sunset landscape",
+  "clientRequestId": "web-req-c0192e42-7c98-4d3b"
+}
+```
+
+### Why It Matters
+
+Mobile apps and web browsers frequently experience network timeouts, connection drops, or rapid double-clicks.
+
+If a client sends `POST /chats/:chatId/messages` and disconnects before receiving the response:
+1. The client retries the request with the **same** `clientRequestId`.
+2. The server recognizes the `clientRequestId` and returns the previously created message and run.
+3. No duplicate message is created in the chat.
+4. No duplicate agent run or duplicate credit hold is triggered.
+
+<Tip>
+  We recommend using a UUID v4 (e.g. `crypto.randomUUID()`) prefixed with your client application name for each user action.
+</Tip>

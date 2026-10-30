@@ -1,0 +1,43 @@
+---
+title: "Agent Skills"
+description: "How domain-specific instructions are loaded on demand to keep prompts lightweight."
+---
+
+Skills are specialized instruction packages that teach the AI agent how to handle specific tasks (such as product photography framing, social aspect ratios, or asking structured human questions).
+
+## Why On-Demand Skills?
+
+Many AI systems stuff every instruction into the system prompt. This inflates latency, increases token costs, and leads to prompt confusion.
+
+Magica uses **On-Demand Skill Loading**:
+1. The base system prompt only contains a lightweight one-line summary of each available skill.
+2. The agent analyzes the user's request.
+3. If a task requires specialized expertise, the agent invokes `load_skill` to pull in the full skill file before executing creative steps.
+
+## How the Agent Uses Skills
+
+```
+User: "Make an Instagram ad for my coffee brand"
+   │
+   ▼
+Agent identifies needed skill: "product-photo"
+   │
+   ▼
+Agent calls load_skill({ "name": "product-photo" })
+   │
+   ▼
+System returns specialized lighting, aspect ratio, and composition rules
+   │
+   ▼
+Agent applies rules to gpt_image_2 and crop_image tool calls
+```
+
+## Available Built-In Skills
+
+| Skill | Purpose |
+| :--- | :--- |
+| `request-options` | Guides the agent on how and when to ask structured multiple-choice questions before expensive steps. |
+| `product-photo` | Best practices for commercial product staging, neutral studio lighting, and clean backdrops. |
+| `social-crop` | Common platform aspect ratios (1:1 feed, 9:16 story/reels, 16:9 banner) and safe margins. |
+
+Skills are recorded in the database per run (`RunSkill`), ensuring runs are deterministic and reproducible.

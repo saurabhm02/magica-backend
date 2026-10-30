@@ -1,0 +1,17 @@
+---
+title: "Webhooks"
+description: "Upcoming outbound webhook support for server-to-server notifications."
+---
+
+Outbound webhooks are coming soon to the Magica Agent Chat API.
+
+Instead of keeping WebSocket connections open or polling the active run endpoints, you will be able to register an HTTPS endpoint in your developer dashboard to receive asynchronous event payloads when key milestones occur:
+
+- `agent.started` – An agent run has been dispatched and is thinking.
+- `agent.completed` – An agent run has finished successfully with its final reply.
+- `agent.failed` – An agent run failed or encountered an error.
+- `tool.completed` – A paid tool execution (e.g. image generation, video merge) completed and produced assets.
+
+<Note>
+  Webhook event payloads and signature verification headers will be published alongside the feature release. Today, use the [Realtime Stream](/concepts/realtime) or poll `GET /chats/:chatId/active-run` for state changes.
+</Note>

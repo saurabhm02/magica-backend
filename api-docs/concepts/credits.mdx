@@ -1,0 +1,87 @@
+---
+title: "Credits"
+description: "What costs credits, how we hold and charge them, and how to read the ledger."
+---
+
+Talking to the agent is free. You only spend credits when a Magica tool makes or edits
+media: `gpt_image_2`, `crop_image` and `merge_videos`. Loading skills and asking you
+questions cost nothing too.
+
+## Units
+
+The API returns credits as whole numbers, so there's no rounding. The app shows them
+divided by a million with an "M": `68,484` shows as **0.07M**, and `5,000` as **0.005M**.
+
+New accounts start with `30,000,000` (30M).
+
+## How a tool gets paid for
+
+Every paid tool goes through the same three steps:
+
+1. **Hold.** Before the tool starts, we set aside 1.5× its estimated price. The estimate
+   comes from Magica's live pricing. The extra 50% is there because the final price can
+   be a bit higher than the estimate. If your balance can't cover the hold, the tool
+   doesn't run and you get a clear "Not enough credits" message.
+2. **Run.** Magica makes the image or video.
+3. **Charge or refund.** If it worked, we release the hold and charge the exact amount
+   Magica used. If it failed, timed out or you stopped the run, we release the whole hold
+   and charge nothing.
+
+Each of these steps is saved with its own unique key, so a retry can never charge you
+twice. And if something crashes halfway, any hold that's still open is released when
+the run ends.
+
+## Reading the ledger
+
+Every change to your balance is a row in the ledger. Here is a real run: one image,
+then a crop for an Instagram story.
+
+| Type | Amount | Balance after | What happened |
+| :--- | ---: | ---: | :--- |
+| `grant` | +30,000,000 | 30,000,000 | Starting credits |
+| `reserve` | −79,020 | 29,920,980 | Hold for the image (1.5× the estimate) |
+| `refund` | +79,020 | 30,000,000 | Hold released |
+| `settle` | −68,484 | 29,931,516 | Real price of the image |
+| `reserve` | −7,500 | 29,924,016 | Hold for the crop |
+| `refund` | +7,500 | 29,931,516 | Hold released |
+| `settle` | −5,000 | 29,926,516 | Real price of the crop |
+
+Add up the amounts and you get the balance, so you can always check where it comes from.
+
+## Check your balance
+
+```bash
+curl http://localhost:4000/api/v1/me/credits \
+  -H "Authorization: Bearer YOUR_CLERK_TOKEN"
+```
+
+```json
+{ "balance": 29926516 }
+```
+
+## List the ledger
+
+Newest first, with a cursor for the next page (see
+[Pagination](/concepts/pagination-and-idempotency)).
+
+```bash
+curl "http://localhost:4000/api/v1/me/credits/ledger?limit=10" \
+  -H "Authorization: Bearer YOUR_CLERK_TOKEN"
+```
+
+```json
+{
+  "items": [
+    {
+      "id": "cmvtk1a2b0004xyz",
+      "type": "settle",
+      "amount": -5000,
+      "balanceAfter": 29926516,
+      "runId": "cmvtjq94x0003abc",
+      "toolInvocationId": "cmvtk19zz0002def",
+      "createdAt": "2026-10-29T12:57:40.000Z"
+    }
+  ],
+  "nextCursor": "eyJjcmVhdGVkQXQiOiIyMDI2LTEwLTI5VDEyOjU3OjQwLjAwMFoiLCJpZCI6ImNtdnRrMWEyYjAwMDR4eXoifQ"
+}
+```
