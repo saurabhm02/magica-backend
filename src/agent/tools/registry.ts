@@ -1,6 +1,6 @@
 import type OpenAI from "openai";
 import { z } from "zod";
-import type { Tool } from "@/lib/types";
+import { isMagicaTool, type Tool } from "@/lib/types";
 import { cropImageTool } from "./crop-image";
 import { getModelInfoTool } from "./get-model-info";
 import { gptImage2Tool } from "./gpt-image-2";
@@ -21,8 +21,21 @@ const toolList: Tool[] = [
   submitPlanTool,
 ];
 
+/**
+ * The single tool registry: every tool the agent can call, by name.
+ * Add a new tool to toolList above and it is available everywhere.
+ */
 export const toolsRegistry = new Map<string, Tool>(toolList.map((tool) => [tool.name, tool]));
 
+/**
+ * Finds a tool by name.
+ *
+ * Input:
+ * - name: the tool name the model called
+ *
+ * Output:
+ * - the tool, or undefined if there is no tool with that name
+ */
 export function getTool(name: string): Tool | undefined {
   return toolsRegistry.get(name);
 }
@@ -31,8 +44,16 @@ export function getAllTools(): Tool[] {
   return Array.from(toolsRegistry.values());
 }
 
-export function getLlmTools(): OpenAI.Chat.Completions.ChatCompletionTool[] {
-  return getAllTools().map((tool) => ({
+/**
+ * Builds the tool definitions sent to the model, with each input schema turned into JSON Schema.
+ *
+ * Output:
+ * - every registered tool (hidden ones included) in OpenAI function-tool format
+ */
+export function getLlmTools({ withoutPaidTools = false } = {}): OpenAI.Chat.Completions.ChatCompletionTool[] {
+  // In plan mode the paid Magica tools are left out until the plan is approved, so the model can only plan.
+  const tools = withoutPaidTools ? getAllTools().filter((tool) => !isMagicaTool(tool)) : getAllTools();
+  return tools.map((tool) => ({
     type: "function",
     function: {
       name: tool.name,

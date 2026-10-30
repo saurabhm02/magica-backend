@@ -4,6 +4,16 @@ import { CREDIT_COSTS, SAFE_ERROR_MESSAGES } from "@/lib/constants";
 import { AppError } from "@/lib/errors";
 import type { LocalTool } from "@/lib/types";
 
+/**
+ * Checks that an asset path is a plain file name, to block path tricks.
+ *
+ * Input:
+ * - rawPath: the path the model asked for
+ *
+ * Output:
+ * - the same path if it is safe; otherwise throws SKILL_INVALID_PATH
+ *   (empty, "..", slashes, backslashes, null bytes or "%" are all rejected)
+ */
 export function validateAssetPath(rawPath: string): string {
   if (!rawPath || rawPath.includes("..") || rawPath.includes("/") || rawPath.includes("\\") || rawPath.includes("\0") || rawPath.includes("%")) {
     throw new AppError("SKILL_INVALID_PATH", SAFE_ERROR_MESSAGES.SKILL_INVALID_PATH, false);
@@ -11,6 +21,20 @@ export function validateAssetPath(rawPath: string): string {
   return rawPath;
 }
 
+/**
+ * read_skill_asset tool: returns one asset file (JSON, Markdown or text) from a skill.
+ *
+ * Input:
+ * - skill: the skill name
+ * - path: the asset's file name inside that skill
+ *
+ * Output:
+ * - { skill, path, content, contentHash }
+ *
+ * Notes:
+ * - Assets come from the in-memory registry only, never read from disk by path.
+ * - Bad path → SKILL_INVALID_PATH, unknown skill → SKILL_NOT_FOUND, unknown asset → NOT_FOUND.
+ */
 export const readSkillAssetTool: LocalTool<ReadSkillAssetInput, ReadSkillAssetOutput> = {
   name: "read_skill_asset",
   displayName: "Read Skill Asset",

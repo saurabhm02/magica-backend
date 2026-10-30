@@ -81,6 +81,22 @@ export function getSkillsDirectory(): string {
   return path.resolve(process.cwd(), "agent-skills");
 }
 
+/**
+ * Reads every skill folder from disk and builds the skills registry.
+ * Each folder needs a SKILL.md with name + description frontmatter; other files become assets.
+ *
+ * Input:
+ * - dirPath: the skills folder (defaults to agent-skills)
+ *
+ * Output:
+ * - a map of skill name → skill (body, content hash, assets); also cached for later calls
+ *
+ * Rules it enforces (any break throws, so a bad skill fails loudly at startup):
+ * - Missing folder, missing SKILL.md, or bad frontmatter.
+ * - Two skills with the same name.
+ * - An asset that isn't .md, .txt or .json, or any file over MAX_SKILL_FILE_SIZE_BYTES.
+ * - Hidden files and sub-folders inside a skill are ignored.
+ */
 export function loadSkillsRegistry(dirPath = getSkillsDirectory()): Map<string, Skill> {
   if (!fs.existsSync(dirPath)) {
     throw new Error(`Skills directory not found: ${dirPath}`);
@@ -175,6 +191,13 @@ export function getAllSkills(): Skill[] {
   return Array.from(getSkillsRegistry().values());
 }
 
+/**
+ * Builds the short skill list for the system prompt, one "- name: description" line per skill.
+ * The model then calls load_skill to get the full instructions.
+ *
+ * Output:
+ * - the list as text, or "" when there are no skills
+ */
 export function getSkillsPromptSummary(): string {
   const skills = getAllSkills();
   if (skills.length === 0) return "";

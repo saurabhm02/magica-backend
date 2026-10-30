@@ -20,6 +20,22 @@ export type MagicaRunPayload = {
   params: Record<string, unknown>;
 };
 
+/**
+ * Starts one Magica node run for a tool invocation and polls it until it finishes.
+ *
+ * Input:
+ * - payload: toolInvocationId, the Magica nodeType, optional subModelId, and the node params
+ * - options.signal: aborts the run; options.sleep: how to wait between polls (Trigger's wait.for in the task)
+ * - options.timeoutMs: give up after this long (default MAGICA_TIMEOUT_MS); options.processId: for logs
+ *
+ * Output:
+ * - { output, creditUsed }: the node's output and the credits Magica reports
+ *
+ * Notes:
+ * - If the invocation already has a magicaRunId, it resumes polling that run instead of starting a new one.
+ * - Polls with backoff, doubling the delay up to MAGICA_MAX_POLL_DELAY_S.
+ * - FAILED or CANCELED → MAGICA_RUN_FAILED. Too slow → MAGICA_TIMEOUT. Aborted → INTERNAL error.
+ */
 export async function executeMagicaRun(
   { toolInvocationId, nodeType, subModelId, params }: MagicaRunPayload,
   options?: {
@@ -87,6 +103,17 @@ export async function executeMagicaRun(
 
 export { type MagicaRunResult } from "@/contracts/tools";
 
+/**
+ * Trigger.dev task that runs one Magica tool call (see executeMagicaRun). No retries, so a paid
+ * generation is never started twice.
+ *
+ * Output:
+ * - { ok: true, output, creditUsed } or { ok: false, error } with a safe error; it never throws
+ *
+ * Notes:
+ * - onSuccess / onFailure finish the tool invocation only when it isn't part of an agent run;
+ *   inside a run, executeTurnTools finishes it.
+ */
 export const magicaRun = task<"magica-run", MagicaRunPayload, MagicaRunResult>({
   id: "magica-run",
   retry: { maxAttempts: 1 },

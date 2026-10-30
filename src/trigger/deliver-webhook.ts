@@ -10,6 +10,24 @@ export type DeliverWebhookTaskInput = {
 
 const PROTECTED_HEADERS = ["content-type", "user-agent", "x-webhook-signature"];
 
+/**
+ * Sends one queued webhook delivery as a signed POST and records the result.
+ *
+ * Input:
+ * - deliveryId: the webhook delivery row to send
+ * - processId: the Trigger.dev run id, for logs
+ *
+ * Output:
+ * - nothing; the delivery row gets the attempt count, status code, status and error
+ *
+ * Rules it enforces:
+ * - Already succeeded → does nothing (safe to run twice).
+ * - The URL is checked again before sending (SSRF check); failing it marks the delivery failed.
+ * - Signed with HMAC-SHA256 over "<timestamp>.<body>" in X-Webhook-Signature (t=...,v1=...).
+ *   Custom headers can't override Content-Type, User-Agent or the signature.
+ * - 10 second timeout. Redirects are not followed and count as failed.
+ * - Network error, 429 or 5xx → throws so the task retries; other 4xx → failed, no retry.
+ */
 export async function executeWebhookDelivery(deliveryId: string, processId?: string): Promise<void> {
   logger.info("delivering webhook", { deliveryId, processId });
   const delivery = await db.webhookDelivery.findUniqueOrThrow({
@@ -131,6 +149,10 @@ export async function executeWebhookDelivery(deliveryId: string, processId?: str
   }
 }
 
+/**
+ * Trigger.dev task that delivers one webhook (see executeWebhookDelivery).
+ * Retries up to 3 attempts with exponential backoff starting at 1 second.
+ */
 export const deliverWebhook = task<
   "deliver-webhook",
   DeliverWebhookTaskInput,

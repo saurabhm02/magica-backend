@@ -5,6 +5,20 @@ import { db } from "@/lib/db";
 import { AppError } from "@/lib/errors";
 import type { LocalTool } from "@/lib/types";
 
+/**
+ * load_skill tool: gives the model the full instructions of one skill from the system prompt list.
+ *
+ * Input:
+ * - name: the skill name
+ *
+ * Output:
+ * - { name, content, contentHash }
+ *
+ * Notes:
+ * - Unknown name → SKILL_NOT_FOUND.
+ * - The first load in a run is saved (one row per run + skill); loading it again in the same run
+ *   returns that saved copy, so the run keeps seeing the same version even if the file changes.
+ */
 export const loadSkillTool: LocalTool<LoadSkillInput, LoadSkillOutput> = {
   name: "load_skill",
   displayName: "Load Skill",

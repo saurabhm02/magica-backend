@@ -66,6 +66,25 @@ export function formatWaitpointResponse(waitpoint: Waitpoint): WaitpointResponse
   };
 }
 
+/**
+ * Pauses a run for user input: creates a Trigger.dev wait token and saves a pending waitpoint
+ * (a question card or a plan to approve).
+ *
+ * Input:
+ * - runId, toolInvocationId: the run and the tool call that is asking
+ * - type: "options" (questions, the default) or another kind such as "plan"
+ * - input: what to show the user (questions, plan steps, message)
+ * - traceId: for logs
+ *
+ * Output:
+ * - { waitpoint, tokenId }: the saved waitpoint and the token to wait on
+ *
+ * Notes:
+ * - One waitpoint per tool call (key waitpoint:<runId>:<toolInvocationId>); a repeat returns the
+ *   existing one, so a retried step never asks twice.
+ * - Sets the run to "waiting" and puts the card in run metadata so the client can show it.
+ * - Expires after WAITPOINT_TIMEOUT.
+ */
 export async function createWaitpoint(params: CreateWaitpointParams) {
   const { runId, toolInvocationId, type = "options", input, traceId } = params;
   const idempotencyKey = `waitpoint:${runId}:${toolInvocationId}`;
@@ -133,6 +152,22 @@ export async function createWaitpoint(params: CreateWaitpointParams) {
   return { waitpoint, tokenId: token.id };
 }
 
+/**
+ * Waits until the user answers a waitpoint (or it times out), then resumes the run.
+ *
+ * Input:
+ * - waitpointId, tokenId: the waitpoint and its wait token
+ * - runId, toolInvocationId, traceId: for status updates and logs
+ * - input: the original questions, used to fill "skipped" answers
+ *
+ * Output:
+ * - for question cards: { answers } (every answer is "skipped" if the user skipped);
+ *   otherwise the saved response as is (for a plan: action and feedback)
+ *
+ * Notes:
+ * - Timeout or token error → waitpoint marked expired, WAITPOINT_EXPIRED is thrown.
+ * - On answer the run goes back to "running" and the card is removed from metadata.
+ */
 export async function waitForWaitpoint<T = unknown>(params: WaitForWaitpointParams): Promise<T> {
   const { waitpointId, tokenId, runId, toolInvocationId, input, traceId } = params;
 
@@ -210,6 +245,24 @@ export async function waitForWaitpoint<T = unknown>(params: WaitForWaitpointPara
   return resData as unknown as T;
 }
 
+/**
+ * Saves the user's answer to a pending waitpoint and wakes up the waiting run.
+ *
+ * Input:
+ * - userId: the signed-in user
+ * - chatId: the chat (must belong to this user)
+ * - waitpointId: the waitpoint to answer
+ * - body: answers, skip, a plan action (run_all / step_by_step), or request_changes feedback
+ *
+ * Output:
+ * - { id, status, action, feedback, answers }
+ *
+ * Rules it enforces:
+ * - Unknown waitpoint, or one from another user's chat → NOT_FOUND. Expired → WAITPOINT_EXPIRED.
+ * - Already answered or skipped → returns the saved answer, nothing changes (safe to retry).
+ * - Only the request that moves it out of "pending" completes the wait token, so the run
+ *   resumes once.
+ */
 export async function respondWaitpoint({
   userId,
   chatId,
@@ -333,6 +386,15 @@ export async function respondWaitpoint({
   };
 }
 
+/**
+ * Returns the run's newest pending waitpoint in API shape, so a reloaded client can show it again.
+ *
+ * Input:
+ * - runId: the agent run
+ *
+ * Output:
+ * - the waitpoint, or null if nothing is pending
+ */
 export async function getPendingWaitpointForRun(runId: string): Promise<WaitpointResponse | null> {
   const waitpoint = await db.waitpoint.findFirst({
     where: {

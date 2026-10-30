@@ -75,6 +75,22 @@ async function fetchWithRetry(
   return fetch(url, { ...init, signal: options?.signal });
 }
 
+/**
+ * Starts a Magica node run.
+ *
+ * Input:
+ * - nodeType: the Magica node to run
+ * - params: { subModelId?, input } sent as the request body
+ * - options: an abort signal, or fetch options (signal, maxRetries, sleep)
+ *
+ * Output:
+ * - { runId }: the Magica run id to poll with getRun
+ *
+ * Notes:
+ * - 429 is retried with backoff (honours retry-after headers), up to maxRetries (default 2).
+ * - 401 → MAGICA_UNAUTHORIZED, 403 → CREDITS_EXHAUSTED, 429 → MAGICA_RATE_LIMITED.
+ * - 400 → TOOL_INPUT_INVALID with Magica's userMessage if given; other errors → MAGICA_RUN_FAILED.
+ */
 export async function runNode(
   nodeType: string,
   params: { subModelId?: string; input: Record<string, unknown> },
@@ -106,6 +122,19 @@ export async function runNode(
   return { runId: data.runId };
 }
 
+/**
+ * Reads the current state of a Magica run.
+ *
+ * Input:
+ * - runId: the Magica run id
+ * - options: an abort signal, or fetch options (signal, maxRetries, sleep)
+ *
+ * Output:
+ * - the Magica run: status, output, creditUsed, and any error or user message
+ *
+ * Notes:
+ * - Same retry and error mapping as runNode; any other non-OK response → MAGICA_RUN_FAILED.
+ */
 export async function getRun(
   runId: string,
   options?: MagicaFetchOptions | AbortSignal,
@@ -135,6 +164,20 @@ export function clearEstimateCache() {
   estimateCache.clear();
 }
 
+/**
+ * Asks Magica how many credits a node run will cost, used to size the credit hold.
+ *
+ * Input:
+ * - nodeType, subModelId, data: what will be run
+ * - fallback: the value to use if Magica can't answer
+ *
+ * Output:
+ * - the estimate in microcredits
+ *
+ * Notes:
+ * - Answers are cached in memory for one hour per node + model + input.
+ * - Never throws: any failure or bad response returns the fallback.
+ */
 export async function estimateNodeCredits(params: {
   nodeType: string;
   subModelId?: string;

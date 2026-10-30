@@ -80,6 +80,30 @@ function extractAssets(tool: Tool, output: unknown, toolInvocationId: string, me
   }
 }
 
+/**
+ * Runs all the tool calls the model asked for in one step and turns the results into
+ * saved content blocks and tool messages for the next model call.
+ *
+ * Input:
+ * - params.runId, userId, traceId: the run, its owner, and the trace id for logs
+ * - params.signal: aborts the run
+ * - params.toolCalls: the tool calls from this model step
+ * - params.toolsMetadata, assetsMetadata: live step and asset lists, updated in place
+ * - params.planMode, planApproved: whether paid tools are blocked until a plan is approved
+ * - params.onMetadataChange: called whenever a step changes, to push it to the client
+ *
+ * Output:
+ * - { contentBlocks, toolMessages, insufficientCreditsError?, waitpointExpiredError?, planApproved? }
+ *
+ * Rules it enforces:
+ * - Every call gets a tool invocation row first (idempotency key tool:<runId>:<toolCallId>).
+ * - Bad JSON, unknown tool or invalid input → that call fails with TOOL_INPUT_INVALID; others still run.
+ * - In plan mode, paid (Magica) tools fail until the plan is approved.
+ * - Credits are held before running (estimate x CREDIT_RESERVE_MULTIPLIER). Not enough → no more
+ *   calls run, and the turn reports INSUFFICIENT_CREDITS.
+ * - Local tools run one by one; Magica tools run in parallel as child tasks.
+ * - Results are saved in the model's call order. An approved plan runs its steps right after.
+ */
 export async function executeTurnTools(params: ExecuteTurnToolsParams): Promise<ExecuteTurnToolsResult> {
   const { runId, userId, traceId, signal, toolCalls, toolsMetadata, assetsMetadata, onMetadataChange } = params;
 

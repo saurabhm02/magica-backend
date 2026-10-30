@@ -53,6 +53,21 @@ export function formatAuthExpires(date: Date): string {
   return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}+00:00`;
 }
 
+/**
+ * Builds signed Transloadit upload params so the browser can upload files straight to Transloadit.
+ *
+ * Input:
+ * - userId: the signed-in user (stored in the assembly fields, checked again in completeUpload)
+ * - files: name, type and size of each file the client wants to upload
+ *
+ * Output:
+ * - { params, signature }: the params JSON and its sha384 HMAC signature, valid for one hour
+ *
+ * Rules it enforces:
+ * - At least one file, at most MAX_ATTACHMENTS_PER_MESSAGE.
+ * - Each file must be an allowed type and at most MAX_UPLOAD_BYTES.
+ * - Files are stored to S3 only when S3 credentials are set.
+ */
 export function createUploadParams(userId: string, files: UploadFileItem[]) {
   if (files.length === 0) {
     throw new AppError("VALIDATION_FAILED", "At least one file is required.");
@@ -124,6 +139,23 @@ export function mapTransloaditError(err?: string | null, message?: string | null
   return new AppError("INTERNAL", message || SAFE_ERROR_MESSAGES.INTERNAL);
 }
 
+/**
+ * Reads a finished Transloadit assembly and saves its files as the user's attachments.
+ *
+ * Input:
+ * - userId: the signed-in user
+ * - assemblyId: the Transloadit assembly id (32 hex characters)
+ *
+ * Output:
+ * - { attachments }: the saved attachments, ready to attach to a message
+ *
+ * Rules it enforces:
+ * - Bad id, unfinished upload, or too many files → VALIDATION_FAILED.
+ * - The assembly must have been signed for this user → UNAUTHORIZED otherwise.
+ * - Size and type are checked again on the server, not trusted from the client.
+ * - Safe to call twice: one row per assembly + URL (upsert).
+ * - Files not stored in our own bucket expire after 24 hours.
+ */
 export async function completeUpload(userId: string, assemblyId: string): Promise<{ attachments: Attachment[] }> {
   if (!/^[0-9a-f]{32}$/.test(assemblyId)) {
     throw new AppError("VALIDATION_FAILED", "Invalid assembly ID");
@@ -260,6 +292,23 @@ export async function completeUpload(userId: string, assemblyId: string): Promis
   return { attachments: attachments.map(toAttachmentDTO) };
 }
 
+/**
+ * Creates a new attachment from the user's media library, so an old upload or a generated
+ * asset can be sent with a new message.
+ *
+ * Input:
+ * - userId: the signed-in user
+ * - target: { attachmentId } to reuse an upload, or { toolInvocationId, url } to reuse a generated
+ *   asset (the old (toolInvocationId, url) argument form is also accepted)
+ *
+ * Output:
+ * - the new attachment
+ *
+ * Rules it enforces:
+ * - An upload must be the user's, ready and not expired; a generated asset must come from the
+ *   user's succeeded tool call and its URL must be one of that tool's outputs. Otherwise NOT_FOUND.
+ * - Always creates a fresh copy, so the original stays free for its own message.
+ */
 export async function createLibraryAttachment(
   userId: string,
   targetOrToolInvocationId: string | { toolInvocationId?: string; url?: string; attachmentId?: string },
@@ -347,6 +396,23 @@ export async function createLibraryAttachment(
   return toAttachmentDTO(attachment);
 }
 
+/**
+ * Links attachments to a message, in the given order. Runs inside the caller's transaction.
+ *
+ * Input:
+ * - tx: the open transaction
+ * - userId: the message owner
+ * - messageId: the message to attach to
+ * - attachmentIds: attachments in display order
+ *
+ * Output:
+ * - nothing; throws if any attachment can't be used
+ *
+ * Rules it enforces:
+ * - At most MAX_ATTACHMENTS_PER_MESSAGE.
+ * - Each must belong to the user (NOT_FOUND otherwise), be ready, and not be expired.
+ * - Each can be attached only once; one already on a message → VALIDATION_FAILED.
+ */
 export async function attachToMessage(
   tx: Prisma.TransactionClient,
   userId: string,

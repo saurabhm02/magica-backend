@@ -13,11 +13,37 @@ const client = new OpenAI({
 });
 
 
-// We only ever use free models. This stops a paid model from running even if one is passed in by mistake.
+/**
+ * Says whether a model id is a free OpenRouter model.
+ * We only ever use free models; this stops a paid model from running even if one is passed in by mistake.
+ *
+ * Input:
+ * - model: the model id
+ *
+ * Output:
+ * - true for "openrouter/free" or any id ending in ":free"
+ */
 export function isFreeModel(model: string) {
   return model === "openrouter/free" || model.endsWith(":free");
 }
 
+/**
+ * Streams one model reply as simple events: text, reasoning, tool-call pieces, usage, then done.
+ *
+ * Input:
+ * - messages: the prompt
+ * - signal: aborts the request
+ * - tools: tool definitions the model may call (optional)
+ * - model: the model to use (defaults to LLM_MODEL)
+ *
+ * Output:
+ * - an async stream of LlmEvent; ends with "done" (with the routed model) or one "error"
+ *
+ * Notes:
+ * - A model that isn't free is refused with LLM_UNAVAILABLE, nothing is sent.
+ * - A stream with no text or tool calls → LLM_EMPTY_STREAM (retryable).
+ * - Errors become safe error events (429 → LLM_RATE_LIMITED); after an abort the error is rethrown.
+ */
 export async function* streamChat(
   messages: LlmMessage[],
   signal: AbortSignal,
@@ -92,8 +118,21 @@ export async function* streamChat(
   }
 }
 
-// Tries each model in order. A model that fails before replying is skipped; once a model has
-// started replying we stay with it, because its partial output is already on the user's screen.
+/**
+ * Streams a reply, trying each model in order until one works.
+ *
+ * Input:
+ * - models: model ids, in order of preference
+ * - messages, signal, tools: passed to streamChat
+ *
+ * Output:
+ * - the same events as streamChat, from the model that answered
+ *
+ * Notes:
+ * - A model that fails before replying is skipped. Once a model has started replying we stay
+ *   with it, because its partial output is already on the user's screen.
+ * - The last model's error is passed through as is.
+ */
 export async function* streamChatWithFallback(
   models: string[],
   messages: LlmMessage[],
@@ -193,6 +232,18 @@ async function askOnce(instruction: string, input: string, field: "title" | "sug
   return last.replace(new RegExp(`^${field}\\s*[:=]\\s*`, "i"), "");
 }
 
+/**
+ * Asks the model for a short chat title based on the first user message.
+ *
+ * Input:
+ * - userMessage: the user's first message (only the first 500 characters are sent)
+ *
+ * Output:
+ * - a Title Case title of up to 5 words, or undefined if the call failed or gave nothing usable
+ *
+ * Notes:
+ * - Never throws; it is a nice-to-have and must not fail the run.
+ */
 export async function generateChatTitle(userMessage: string): Promise<string | undefined> {
   try {
     const raw = await askForOneLine(
@@ -209,6 +260,19 @@ export async function generateChatTitle(userMessage: string): Promise<string | u
   }
 }
 
+/**
+ * Asks the model for one short follow-up request the user could send next.
+ *
+ * Input:
+ * - userMessage: what the user asked (first 500 characters)
+ * - reply: what the assistant answered (first 500 characters)
+ *
+ * Output:
+ * - a lowercase suggestion of up to 8 words, or undefined if nothing usable came back
+ *
+ * Notes:
+ * - Never throws; it is a nice-to-have and must not fail the run.
+ */
 export async function generateSuggestion(userMessage: string, reply: string): Promise<string | undefined> {
   try {
     const raw = await askForOneLine(
@@ -225,8 +289,17 @@ export async function generateSuggestion(userMessage: string, reply: string): Pr
   }
 }
 
-// Turns the model's raw thinking into a step title like Magica's
-// ("Decided to inspect the working directory"). The decision is usually at the end.
+/**
+ * Turns the model's raw thinking into a short step title like Magica's
+ * ("Decided to inspect the working directory").
+ *
+ * Input:
+ * - reasoning: the raw thinking text; only the last 2000 characters are sent, since the
+ *   decision is usually at the end
+ *
+ * Output:
+ * - a sentence-case title, or undefined if the model gave nothing usable
+ */
 export async function summarizeReasoning(reasoning: string): Promise<string | undefined> {
   const raw = await askForOneLine(
     "Sum up what this AI assistant decided to do in its reasoning as a short step title: 3-7 words, past tense, sentence case, no period, no tool or function names (for example: Decided to inspect the working directory).",

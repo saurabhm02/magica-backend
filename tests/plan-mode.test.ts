@@ -166,6 +166,27 @@ describe("Plan Mode", () => {
     expect(content.error).toContain("submit_plan");
   });
 
+  it("hides paid tools from the model until the plan is approved, so it has to call submit_plan", async () => {
+    const chat = await createChat(userId);
+    const sent = await sendMessage(userId, chat.id, { content: "make 2 product photos", clientRequestId: randomUUID(), planMode: true });
+
+    const offeredTools: string[][] = [];
+    async function* reply(): AsyncGenerator<LlmEvent> {
+      yield { type: "text-delta", text: "Let me plan that." };
+      yield { type: "done", model: "test-model" };
+    }
+    vi.spyOn(llmModule, "streamChatWithFallback").mockImplementation((_models, _messages, _signal, tools) => {
+      offeredTools.push((tools ?? []).map((t) => (t.type === "function" ? t.function.name : "")));
+      return reply();
+    });
+    vi.spyOn(llmModule, "generateSuggestion").mockResolvedValue(undefined);
+
+    await runAgentTurn(sent.run.id, "trace_plan_tools");
+
+    expect(offeredTools[0]).toContain("submit_plan");
+    for (const paid of ["gpt_image_2", "crop_image", "merge_videos"]) expect(offeredTools[0]).not.toContain(paid);
+  });
+
   it("estimates come from the registry", async () => {
     const chat = await createChat(userId);
     const run = await db.agentRun.create({

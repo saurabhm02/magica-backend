@@ -17,6 +17,23 @@ import { refundLeakedHolds } from "@/modules/credits/credits";
 import { getPendingWaitpointForRun } from "@/modules/waitpoints/waitpoints";
 import { emitWebhook } from "@/modules/webhooks/webhooks";
 
+/**
+ * Hands a queued run to the Trigger.dev "agent-turn" task and returns a token the client
+ * can use to watch it live.
+ *
+ * Input:
+ * - run: the saved agent run
+ * - traceId: request trace id, passed through for logs
+ *
+ * Output:
+ * - { runId, accessToken }: the Trigger run id and a read-only public token for it
+ *
+ * Notes:
+ * - Already dispatched (triggerRunId set) → returns a fresh token, never triggers again.
+ * - The trigger call uses the run id as idempotency key, so a retry can't start a second job.
+ * - If triggering fails, the run is marked failed, a run.failed webhook is sent, and
+ *   the dispatch error is thrown.
+ */
 export async function dispatchRun(run: AgentRun, traceId: string) {
   if (run.triggerRunId) {
     const accessToken = await auth.createPublicToken({ scopes: { read: { runs: [run.triggerRunId] } } });
@@ -66,6 +83,23 @@ export async function dispatchRun(run: AgentRun, traceId: string) {
   }
 }
 
+/**
+ * Stops a run the user asked to cancel.
+ *
+ * Input:
+ * - userId: the signed-in user
+ * - chatId: the chat the run belongs to (must belong to this user)
+ * - runId: the run to cancel
+ *
+ * Output:
+ * - { runId, status }: "cancelled", or the run's current status if it had already finished
+ *
+ * Notes:
+ * - Unknown run → NOT_FOUND. A finished run is left as it is (safe to call twice).
+ * - Cancels the Trigger.dev job first; a failure there is only logged.
+ * - Only the call that actually flips the status marks the reply cancelled, refunds any
+ *   held credits and sends the run.canceled webhook, so these happen once.
+ */
 export async function cancelAgentRun(userId: string, chatId: string, runId: string) {
   await getOwnedChat(userId, chatId);
 
@@ -122,6 +156,19 @@ export async function cancelAgentRun(userId: string, chatId: string, runId: stri
   return { runId: run.id, status: "cancelled" as const };
 }
 
+/**
+ * Returns the chat's current active run (queued, running or waiting), so a client that
+ * reloads can reconnect to it.
+ *
+ * Input:
+ * - userId: the signed-in user
+ * - chatId: the chat to check (must belong to this user)
+ *
+ * Output:
+ * - { runId, triggerRunId, accessToken, status, waitpoint }, or null when nothing is active.
+ *   accessToken is empty if the run isn't dispatched yet or the token call failed.
+ *   waitpoint is the pending question or plan, if any.
+ */
 export async function getActiveAgentRun(userId: string, chatId: string) {
   await getOwnedChat(userId, chatId);
 
@@ -161,6 +208,20 @@ export async function getActiveAgentRun(userId: string, chatId: string) {
   };
 }
 
+/**
+ * Clears a chat's active run if it is stuck, so a new message can start.
+ *
+ * Input:
+ * - chatId: the chat to check
+ *
+ * Output:
+ * - true if a stuck run was marked failed, false if there was no active run or it is still alive
+ *
+ * Notes:
+ * - Stuck means: not updated for STALE_RUN_AFTER_MS, or Trigger.dev says its job already ended.
+ * - A stuck run is marked failed (STALE_RUN), its streaming reply is marked failed, and any
+ *   held credits are refunded.
+ */
 export async function recoverStaleRun(chatId: string): Promise<boolean> {
   const activeRun = await db.agentRun.findFirst({
     where: { chatId, status: { in: ACTIVE_RUN_STATUSES } },
@@ -207,6 +268,17 @@ export async function recoverStaleRun(chatId: string): Promise<boolean> {
   return true;
 }
 
+/**
+ * Returns the status of one run for its owner.
+ *
+ * Input:
+ * - userId: the signed-in user
+ * - runId: the run to read
+ *
+ * Output:
+ * - the run's status, safe error, timestamps, charged credits, routed model and reply id.
+ *   Throws NOT_FOUND if the run doesn't exist or isn't this user's.
+ */
 export async function getRun(userId: string, runId: string) {
   const run = await db.agentRun.findFirst({
     where: { id: runId, userId },

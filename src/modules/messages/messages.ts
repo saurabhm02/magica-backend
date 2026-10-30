@@ -53,6 +53,27 @@ export async function listMessages(userId: string, chatId: string, { cursor, lim
   return { items, nextCursor };
 }
 
+/**
+ * Saves the user's message and starts one agent run for it.
+ * This is the "send turn" step from the spec: check, save, then hand off to a background job.
+ *
+ * Input:
+ * - userId: the signed-in user
+ * - chatId: the chat to send to (must belong to this user)
+ * - body: the message text, an optional list of attachment ids, plan mode, optional webhook,
+ *   and a clientRequestId that is the same on every retry of this send
+ *
+ * Output:
+ * - { message, run, signingSecret }: the saved user message, the queued run, and the
+ *   webhook signing secret (only when a webhook was given)
+ *
+ * Rules it enforces:
+ * - Same clientRequestId again → returns the first result, never a second message or run.
+ * - More than 20 sends a minute → RATE_LIMITED, with how many seconds to wait.
+ * - Only one active run per chat → RUN_ALREADY_ACTIVE (a stuck old run is cleaned up first).
+ * - If a plan is waiting for approval, the message is treated as "change the plan" instead.
+ * - Message, attachments and run are saved together in one transaction: all or nothing.
+ */
 export async function sendMessage(userId: string, chatId: string, body: SendMessageRequest) {
   const [chat, existing] = await Promise.all([
     getOwnedChat(userId, chatId),

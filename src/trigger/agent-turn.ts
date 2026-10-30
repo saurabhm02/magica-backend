@@ -39,6 +39,27 @@ type ToolMeta = NonNullable<RunMetadata["tools"]>[number];
 type AssetMeta = NonNullable<RunMetadata["assets"]>[number];
 type ReasoningBlock = Extract<ContentBlock, { type: "reasoning" }>;
 
+/**
+ * Runs one agent turn end to end: stream the model's reply, run any tools it asks for,
+ * loop until it is done, then save the final reply and settle the run.
+ *
+ * Input:
+ * - runId: the agent run to execute
+ * - traceId: request trace id, for logs
+ * - signal: aborts the turn when the run is cancelled
+ * - processId: the Trigger.dev run id, for logs
+ *
+ * Output:
+ * - nothing; results go to the database, run metadata, live streams and webhooks
+ *
+ * Notes:
+ * - A run that already finished is skipped, so a repeat delivery does nothing.
+ * - Text and reasoning stream live; partial text is saved every SAVE_PARTIAL_TEXT_EVERY_MS.
+ * - Stops on: no tool calls, a model error, insufficient credits, an expired waitpoint,
+ *   or MAX_AGENT_TURNS (MAX_TURNS error).
+ * - Cancel → open tools marked cancelled, run saved as cancelled. Crash → saved as failed, then rethrown.
+ * - The first reply in a chat also gets a generated title; a successful reply gets a follow-up suggestion.
+ */
 export async function runAgentTurn(
   runId: string,
   traceId: string,
@@ -210,7 +231,8 @@ export async function runAgentTurn(
     const messages: LlmMessage[] = [...prompt];
     const hasImages = prompt.some(isMessageWithImages);
     const models = hasImages ? VISION_MODELS : [env.LLM_MODEL];
-    const llmTools = getLlmTools();
+    const allTools = getLlmTools();
+    const planningTools = getLlmTools({ withoutPaidTools: true });
     let lastSavedAt = Date.now();
     let overallToolOrder = 0;
     let planApproved = false;
@@ -225,6 +247,7 @@ export async function runAgentTurn(
       let firstToolCallAt: number | null = null;
       const turnToolCalls: ToolCall[] = [];
 
+      const llmTools = run.planMode && !planApproved ? planningTools : allTools;
       for await (const event of streamChatWithFallback(models, messages, signal, llmTools)) {
         if (event.type === "text-delta") {
           if (!firstTokenAt) firstTokenAt = Date.now();
@@ -269,7 +292,9 @@ export async function runAgentTurn(
         toolCallsCount: turnToolCalls.length,
       });
 
-      const reasoningBlock: ReasoningBlock | null = stepReasoning.trim() ? { type: "reasoning", text: stepReasoning } : null;
+      // Some free models leak tool-call markup like "</tool_calls>" into their thinking; that isn't a real thought.
+      const hasRealReasoning = stepReasoning.replace(/<\/?tool_calls?>/g, "").trim() !== "";
+      const reasoningBlock: ReasoningBlock | null = hasRealReasoning ? { type: "reasoning", text: stepReasoning } : null;
       if (reasoningBlock) contentBlocks.push(reasoningBlock);
       if (streamText.trim()) contentBlocks.push({ type: "text", text: streamText });
       const currentStepText = streamText;
@@ -506,15 +531,31 @@ export async function runAgentTurn(
   logger.info(result.error ? "agent-turn failed" : "agent-turn succeeded", { ...logContext, code: result.error?.code, chargedCredits });
 }
 
+/**
+ * Trigger.dev task that runs one agent turn. No retries: a retry could repeat paid tool calls.
+ */
 export const agentTurn = task({
   id: "agent-turn",
   retry: { maxAttempts: 1 },
   run: ({ runId, traceId }: AgentTurnPayload, { signal, ctx }) => runAgentTurn(runId, traceId, signal, ctx.run.id),
 });
 
-// One open stream per run, opened on the first write. `stream.append()` sends a new request
-// per call and waits for it, far too slow token by token: a reasoning model sends hundreds
-// of small chunks, and the reply only showed up after all of them had gone out.
+/**
+ * Opens one live stream per run, started on the first write.
+ * `stream.append()` sends a new request per call and waits for it, far too slow token by token:
+ * a reasoning model sends hundreds of small chunks, and the reply only showed up after all of
+ * them had gone out.
+ *
+ * Input:
+ * - stream: the Trigger.dev stream to write to (text or reasoning)
+ *
+ * Output:
+ * - { write, close }: write(text) adds a chunk; close() ends the stream and waits at most
+ *   FOLLOW_UP_TIMEOUT_MS for it to flush
+ *
+ * Notes:
+ * - Outside a running Trigger task, writes are silently dropped.
+ */
 function openLiveStream(stream: typeof textStream) {
   let source: ReadableStreamDefaultController<string> | null = null;
   let sent: Promise<unknown> | null = null;
@@ -540,11 +581,36 @@ function openLiveStream(stream: typeof textStream) {
   };
 }
 
-// Waits for the work, but never longer than `ms`. A failure or a timeout just moves on.
+/**
+ * Waits for the work, but never longer than `ms`. A failure or a timeout just moves on.
+ *
+ * Input:
+ * - work: the promise to wait for
+ * - ms: the longest wait, in milliseconds
+ *
+ * Output:
+ * - a promise that always resolves, never rejects
+ */
 function waitAtMost(work: Promise<unknown>, ms: number) {
   return Promise.race([work.catch(() => {}), new Promise((resolve) => setTimeout(resolve, ms))]);
 }
 
+/**
+ * Builds the message list sent to the model for this turn.
+ *
+ * Input:
+ * - chatId: the chat
+ * - userMessageId: the user message being answered (history is read back from here)
+ * - planMode: when true, adds the plan-mode instructions to the system prompt
+ *
+ * Output:
+ * - the system prompt (with the skills summary) followed by up to MAX_HISTORY_MESSAGES
+ *   past messages, oldest first
+ *
+ * Notes:
+ * - Empty messages are skipped. Attachment links are added to each message's text.
+ * - Only the message being answered carries the images themselves; older ones keep just the links.
+ */
 export async function buildPrompt(chatId: string, userMessageId: string, planMode = false): Promise<LlmMessage[]> {
   const latest = await db.message.findMany({
     where: { chatId },
@@ -573,7 +639,10 @@ export async function buildPrompt(chatId: string, userMessageId: string, planMod
     ? `${SYSTEM_PROMPT}\n\n# Available Skills\nLoad these on-demand using load_skill when the user's task matches:\n${skillsSummary}`
     : SYSTEM_PROMPT;
   if (planMode) {
-    systemContent += "\n\n# Plan Mode\nResearch first (check models and prices), then call submit_plan. Don't run any paid tool until the plan is approved.";
+    systemContent +=
+      "\n\n# Plan Mode\nResearch first (check models and prices), then call the submit_plan tool with the steps. " +
+      "Never write the plan as plain text: the user approves it in the plan card that submit_plan shows. " +
+      "Paid tools become available only after the plan is approved.";
   }
   return [{ role: "system", content: systemContent }, ...history];
 }
@@ -585,8 +654,20 @@ function withAttachedLine(text: string, attachments: Attachment[]) {
   return text.trim() ? `${text}\nAttached: ${attached}` : `Attached: ${attached}`;
 }
 
-// Images go to the model inline: some model hosts can't download links. An image that is too big
-// or can't be downloaded is left out; the model still has its link.
+/**
+ * Turns image attachments into inline base64 image parts for the model.
+ * Images go inline because some model hosts can't download links.
+ *
+ * Input:
+ * - attachments: the message's attachments
+ *
+ * Output:
+ * - image_url parts, one per image that was downloaded
+ *
+ * Notes:
+ * - An image over MAX_VISION_IMAGE_BYTES, or one that can't be downloaded in time, is left out;
+ *   the model still has its link.
+ */
 async function toImageParts(attachments: Attachment[]) {
   const images = attachments.filter((a) => a.kind === "image" && a.sizeBytes <= MAX_VISION_IMAGE_BYTES);
   const parts = await Promise.all(
@@ -630,6 +711,22 @@ function savePartialContent(messageId: string, contentBlocks: ContentBlock[], pa
   });
 }
 
+/**
+ * Saves the end state of a run and its reply in one transaction.
+ *
+ * Input:
+ * - runId, messageId: the run and its assistant reply (messageId may be missing if the run crashed early)
+ * - blocks, partial: the saved content blocks plus any unsaved streamed text
+ * - status: succeeded, failed or cancelled
+ * - error, usage, routedModel: optional details stored on the run
+ *
+ * Output:
+ * - { chargedCredits }: the total credits charged by this run's tool calls
+ *
+ * Notes:
+ * - Refunds any credit holds still open first (a failure there is only logged).
+ * - A reply with no content is saved with one empty text block.
+ */
 async function finalizeRun({
   runId,
   messageId,

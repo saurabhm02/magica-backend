@@ -19,6 +19,22 @@ export type EmitWebhookParams = {
   data: WebhookData;
 };
 
+/**
+ * Queues a webhook for a run event, if the run has a webhook subscribed to that event.
+ *
+ * Input:
+ * - agentRunId or toolInvocationId: what the event is about
+ * - event: e.g. run.started, run.completed, run.failed, run.canceled
+ * - data: the event body (status, output, credits used, finish time)
+ *
+ * Output:
+ * - nothing; delivery happens in the deliver-webhook task
+ *
+ * Notes:
+ * - One delivery per subscription + event (key <subscriptionId>:<event>), so emitting the same
+ *   event twice sends it once.
+ * - Never throws: a webhook problem must not break the run. Errors are only logged.
+ */
 export async function emitWebhook({
   agentRunId,
   toolInvocationId,

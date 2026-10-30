@@ -72,6 +72,23 @@ async function applyEntry(
   return { applied: true, balanceAfter: newBalance };
 }
 
+/**
+ * Holds credits before a paid tool runs, so the user can't spend more than they have.
+ *
+ * Input:
+ * - userId: whose balance to hold from
+ * - runId: the agent run, if any
+ * - toolInvocationId: the tool call the hold is for
+ * - amount: credits to hold (microcredits)
+ *
+ * Output:
+ * - { reserved, balanceAfter }: reserved is false for a zero amount or a repeat call
+ *
+ * Rules it enforces:
+ * - One hold per tool call (key reserve:<toolInvocationId>); a repeat returns the first result.
+ * - Balance lower than the amount → INSUFFICIENT_CREDITS, nothing is held.
+ * - The user row is locked (FOR UPDATE), so parallel holds can't overspend.
+ */
 export async function reserveCredits(params: {
   userId: string;
   runId?: string;
@@ -94,6 +111,21 @@ export async function reserveCredits(params: {
   }, TX_OPTIONS);
 }
 
+/**
+ * Charges the real cost of a finished tool call: releases its hold, then charges the actual amount.
+ *
+ * Input:
+ * - userId, runId, toolInvocationId: who and what to charge
+ * - actualCreditUsed: what the tool really cost (microcredits)
+ *
+ * Output:
+ * - { settled, balanceAfter }: settled is false if this call was already settled
+ *
+ * Rules it enforces:
+ * - Runs once per tool call (key settle:<toolInvocationId>); refund and charge happen in one transaction.
+ * - The actual cost is charged even if it is more than the hold; that case is logged.
+ * - Also stores the charged amount on the tool invocation.
+ */
 export async function settleCredits(params: {
   userId: string;
   runId?: string;
@@ -150,6 +182,20 @@ export async function settleCredits(params: {
   }, TX_OPTIONS);
 }
 
+/**
+ * Gives back a tool call's held credits (for a failed or cancelled call).
+ *
+ * Input:
+ * - userId, runId, toolInvocationId: who and what to refund
+ * - amount: credits to return (microcredits)
+ *
+ * Output:
+ * - { refunded, balanceAfter }: refunded is false for a zero amount or a repeat call
+ *
+ * Rules it enforces:
+ * - Same key as the refund inside settleCredits (refund:<toolInvocationId>), so a hold is
+ *   never returned twice.
+ */
 export async function refundCredits(params: {
   userId: string;
   runId?: string;
@@ -172,6 +218,17 @@ export async function refundCredits(params: {
   }, TX_OPTIONS);
 }
 
+/**
+ * Adds credits to a user's balance (sign-up bonus, top-ups, seeding).
+ *
+ * Input:
+ * - userId: who gets the credits
+ * - amount: credits to add (microcredits)
+ * - idempotencyKey: makes the grant safe to retry
+ *
+ * Output:
+ * - { granted, balanceAfter }: granted is false if this key was already used
+ */
 export async function grantCredits(params: {
   userId: string;
   amount: bigint | number;
@@ -189,6 +246,19 @@ export async function grantCredits(params: {
   }, TX_OPTIONS);
 }
 
+/**
+ * Returns any credit holds a run still has open, used when a run ends, is cancelled or goes stale.
+ *
+ * Input:
+ * - runId: the agent run
+ *
+ * Output:
+ * - nothing
+ *
+ * Notes:
+ * - Safe to call many times: holds already settled or refunded share the refund key, so
+ *   they are skipped.
+ */
 export async function refundLeakedHolds(runId: string): Promise<void> {
   const reserves = await db.creditLedger.findMany({
     where: { runId, type: "reserve" },
@@ -201,6 +271,17 @@ export async function refundLeakedHolds(runId: string): Promise<void> {
   }
 }
 
+/**
+ * Lists a user's credit ledger, newest first, one page at a time.
+ *
+ * Input:
+ * - userId: whose ledger to read
+ * - query.cursor: from a previous page's nextCursor; query.limit: page size (default 20, 1 to 100)
+ *
+ * Output:
+ * - { items, nextCursor }: ledger rows with amounts as numbers, and the cursor for the next
+ *   page (null on the last page)
+ */
 export async function getLedger(userId: string, query?: { cursor?: string; limit?: number }) {
   const limit = Math.min(Math.max(query?.limit ?? 20, 1), 100);
   const decoded = query?.cursor ? decodeCursor(query.cursor, CreatedAtIdCursor) : undefined;

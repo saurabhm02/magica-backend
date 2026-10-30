@@ -55,6 +55,21 @@ export function isPrivateIp(ip: string): boolean {
   return false;
 }
 
+/**
+ * Checks that a webhook URL is safe to call from our servers (SSRF guard).
+ *
+ * Input:
+ * - urlString: the URL the user gave
+ *
+ * Output:
+ * - the normalized URL; throws VALIDATION_FAILED if it is not allowed
+ *
+ * Rules it enforces:
+ * - Must be a valid https URL.
+ * - No localhost, .localhost, .local or .internal hosts.
+ * - No private, loopback, link-local or multicast IPs, given directly or reached through DNS.
+ * - A hostname that doesn't resolve is rejected (fail closed).
+ */
 export async function validateWebhookUrl(urlString: string): Promise<string> {
   let url: URL;
   try {
