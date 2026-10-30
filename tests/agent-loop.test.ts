@@ -8,6 +8,7 @@ import { executeTurnTools } from "@/agent/run-tools";
 import { ContentBlock } from "@/contracts/content-blocks";
 import type { SafeError } from "@/contracts/errors";
 import type { RunMetadata } from "@/contracts/run";
+import { SAFE_ERROR_MESSAGES, VISION_MODELS } from "@/lib/constants";
 import { db } from "@/lib/db";
 import type { LlmEvent, LlmMessage, ToolCall } from "@/lib/types";
 import { createChat } from "@/modules/chats/chats";
@@ -38,6 +39,7 @@ afterAll(async () => {
   await db.runSkill.deleteMany({ where: { run: { userId } } });
   await db.toolInvocation.deleteMany({ where: { run: { userId } } });
   await db.agentRun.deleteMany({ where: { userId } });
+  await db.attachment.deleteMany({ where: { userId } });
   await db.message.deleteMany({ where: { chat: { userId } } });
   await db.chat.deleteMany({ where: { userId } });
   await db.user.delete({ where: { id: userId } });
@@ -66,7 +68,7 @@ describe("Agent turn loop with chained tools", () => {
       yield { type: "done", model: "test-model" };
     }
 
-    vi.spyOn(llmModule, "streamChat").mockImplementation(() => textStreamGen());
+    vi.spyOn(llmModule, "streamChatWithFallback").mockImplementation(() => textStreamGen());
 
     const metadataStates: string[] = [];
     vi.spyOn(metadata, "replace").mockImplementation((data) => {
@@ -102,7 +104,7 @@ describe("Agent turn loop with chained tools", () => {
       yield { type: "done", model: "test-model" };
     }
     let turn = 0;
-    vi.spyOn(llmModule, "streamChat").mockImplementation(() => (turn++ === 0 ? toolTurn() : textTurn()));
+    vi.spyOn(llmModule, "streamChatWithFallback").mockImplementation(() => (turn++ === 0 ? toolTurn() : textTurn()));
     vi.spyOn(llmModule, "summarizeReasoning").mockResolvedValue("Decided to make the image");
     vi.spyOn(llmModule, "generateSuggestion").mockResolvedValue(undefined);
     let lastMeta: RunMetadata | undefined;
@@ -151,7 +153,7 @@ describe("Agent turn loop with chained tools", () => {
       yield { type: "text-delta", text: " world!" };
       yield { type: "done", model: "test-model" };
     }
-    vi.spyOn(llmModule, "streamChat").mockImplementation(() => reply());
+    vi.spyOn(llmModule, "streamChatWithFallback").mockImplementation(() => reply());
     vi.spyOn(llmModule, "generateSuggestion").mockResolvedValue(undefined);
     vi.spyOn(metadata, "replace").mockReturnValue(undefined as unknown as void);
 
@@ -171,6 +173,28 @@ describe("Agent turn loop with chained tools", () => {
     expect(reasoningPipe).toHaveBeenCalledTimes(1);
     expect(await received[textStream.id]).toBe("Hello world!");
     expect(await received[reasoningStream.id]).toBe("The user says hello.");
+  });
+
+  it("an image turn uses the free vision models, and says sorry when they all fail", async () => {
+    const chat = await createChat(userId);
+    mswServer.use(http.get("https://example.com/photo.png", () => new HttpResponse(new Uint8Array([1, 2, 3]))));
+    const image = await db.attachment.create({
+      data: { userId, name: "photo.png", sizeBytes: 3n, mimeType: "image/png", kind: "image", source: "upload", status: "ready", url: "https://example.com/photo.png" },
+    });
+    const sent = await sendMessage(userId, chat.id, { content: "describe this", clientRequestId: randomUUID(), planMode: false, attachmentIds: [image.id] });
+
+    async function* allModelsBusy(): AsyncGenerator<LlmEvent> {
+      yield { type: "error", code: "LLM_RATE_LIMITED", message: "busy", retryable: true };
+    }
+    const llm = vi.spyOn(llmModule, "streamChatWithFallback").mockImplementation(() => allModelsBusy());
+    vi.spyOn(metadata, "replace").mockReturnValue(undefined as unknown as void);
+
+    await runAgentTurn(sent.run.id, "test-vision");
+
+    expect(llm.mock.calls[0]![0]).toEqual(VISION_MODELS);
+    const run = await db.agentRun.findUniqueOrThrow({ where: { id: sent.run.id } });
+    expect(run.status).toBe("failed");
+    expect(run.error).toMatchObject({ code: "VISION_UNAVAILABLE", message: SAFE_ERROR_MESSAGES.VISION_UNAVAILABLE });
   });
 
   it("chains gpt_image_2 -> crop_image -> text answer with correct message formats and block ordering", async () => {
@@ -238,7 +262,7 @@ describe("Agent turn loop with chained tools", () => {
     }
 
     let turnCount = 0;
-    vi.spyOn(llmModule, "streamChat").mockImplementation((messages: LlmMessage[]) => {
+    vi.spyOn(llmModule, "streamChatWithFallback").mockImplementation((_models: string[], messages: LlmMessage[]) => {
       capturedPromptHistory.push(JSON.parse(JSON.stringify(messages)));
       turnCount++;
       if (turnCount === 1) return turn1Stream();
@@ -417,7 +441,7 @@ describe("Agent turn loop with chained tools", () => {
     }
 
     let turnCount = 0;
-    vi.spyOn(llmModule, "streamChat").mockImplementation((messages: LlmMessage[]) => {
+    vi.spyOn(llmModule, "streamChatWithFallback").mockImplementation((_models: string[], messages: LlmMessage[]) => {
       capturedPromptHistory.push(JSON.parse(JSON.stringify(messages)));
       turnCount++;
       if (turnCount === 1) return turn1Stream();
@@ -519,7 +543,7 @@ describe("Agent turn loop with chained tools", () => {
       yield { type: "done", model: "openrouter/free" };
     }
 
-    vi.spyOn(llmModule, "streamChat").mockImplementation(() => mockStream());
+    vi.spyOn(llmModule, "streamChatWithFallback").mockImplementation(() => mockStream());
     vi.spyOn(metadata, "replace").mockImplementation(() => {});
 
     await runAgentTurn(runId, "trace_no_dupe");

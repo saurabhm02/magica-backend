@@ -1,7 +1,7 @@
 import { logger, metadata, streams, task } from "@trigger.dev/sdk";
 import type { RunMetadata as TriggerMetadata } from "@trigger.dev/sdk";
-import type { Prisma } from "@prisma/client";
-import { generateChatTitle, generateSuggestion, streamChat, summarizeReasoning } from "@/agent/llm";
+import type { Attachment, Prisma } from "@prisma/client";
+import { generateChatTitle, generateSuggestion, streamChatWithFallback, summarizeReasoning } from "@/agent/llm";
 import { executeTurnTools } from "@/agent/run-tools";
 import { getSkillsPromptSummary } from "@/agent/skills/registry";
 import { getLlmTools } from "@/agent/tools/registry";
@@ -11,20 +11,25 @@ import type { RunMetadata } from "@/contracts/run";
 import {
   DEFAULT_CHAT_TITLE,
   FOLLOW_UP_TIMEOUT_MS,
+  IMAGE_DOWNLOAD_TIMEOUT_MS,
   MAX_HISTORY_MESSAGES,
+  MAX_VISION_IMAGE_BYTES,
   REASONING_RENDER_KEY,
   REASONING_STREAM_ID,
   RUN_CRASHED_ERROR,
+  SAFE_ERROR_MESSAGES,
   SAVE_PARTIAL_TEXT_EVERY_MS,
   SYSTEM_PROMPT,
   TERMINAL_RUN_STATUSES,
   TEXT_STREAM_ID,
+  VISION_MODELS,
 } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import type { AgentTurnPayload, LlmMessage, ToolCall, TurnResult } from "@/lib/types";
 import { refundLeakedHolds } from "@/modules/credits/credits";
 import { deriveTitle, extractSearchText } from "@/modules/messages/messages";
+import { emitWebhook } from "@/modules/webhooks/webhooks";
 
 export const textStream = streams.define<string>({ id: TEXT_STREAM_ID });
 // The model's thinking, shown live under the "Thinking" toggle like Magica.
@@ -34,7 +39,12 @@ type ToolMeta = NonNullable<RunMetadata["tools"]>[number];
 type AssetMeta = NonNullable<RunMetadata["assets"]>[number];
 type ReasoningBlock = Extract<ContentBlock, { type: "reasoning" }>;
 
-export async function runAgentTurn(runId: string, traceId: string, signal = new AbortController().signal) {
+export async function runAgentTurn(
+  runId: string,
+  traceId: string,
+  signal = new AbortController().signal,
+  processId?: string,
+) {
   let replyId: string | null = null;
   let savedChatTitle: string | undefined;
   let titlePromise: Promise<void> | null = null;
@@ -96,11 +106,19 @@ export async function runAgentTurn(runId: string, traceId: string, signal = new 
     }
   };
 
-  let logContext: { traceId: string; chatId: string; runId: string; messageId: string; waitpointTokenId?: string } = {
+  let logContext: {
+    traceId: string;
+    chatId: string;
+    runId: string;
+    messageId: string;
+    processId?: string;
+    waitpointTokenId?: string;
+  } = {
     traceId,
     chatId: "",
     runId,
     messageId: "",
+    processId,
   };
   const result: TurnResult = {};
 
@@ -112,13 +130,24 @@ export async function runAgentTurn(runId: string, traceId: string, signal = new 
     if (TERMINAL_RUN_STATUSES.includes(run.status)) return;
 
     updateMeta({ status: "thinking", thinkingStartedAt });
+    await emitWebhook({
+      agentRunId: run.id,
+      event: "run.started",
+      data: {
+        status: "running",
+        toolName: null,
+        output: null,
+        creditUsed: null,
+        finishedAt: null,
+      },
+    });
 
     const [prompt, reply] = await Promise.all([
       buildPrompt(run.chatId, run.userMessageId, run.planMode),
       startReply(runId, run.chatId),
     ]);
     replyId = reply.id;
-    logContext = { traceId, chatId: run.chatId, runId, messageId: reply.id };
+    logContext = { traceId, chatId: run.chatId, runId, messageId: reply.id, processId };
 
     // 1. Title: for the FIRST message of a chat, start the title call at the START of the run, in parallel
     const previousRepliesCount = await db.message.count({
@@ -179,6 +208,8 @@ export async function runAgentTurn(runId: string, traceId: string, signal = new 
     }
 
     const messages: LlmMessage[] = [...prompt];
+    const hasImages = prompt.some(isMessageWithImages);
+    const models = hasImages ? VISION_MODELS : [env.LLM_MODEL];
     const llmTools = getLlmTools();
     let lastSavedAt = Date.now();
     let overallToolOrder = 0;
@@ -194,7 +225,7 @@ export async function runAgentTurn(runId: string, traceId: string, signal = new 
       let firstToolCallAt: number | null = null;
       const turnToolCalls: ToolCall[] = [];
 
-      for await (const event of streamChat(messages, signal, llmTools)) {
+      for await (const event of streamChatWithFallback(models, messages, signal, llmTools)) {
         if (event.type === "text-delta") {
           if (!firstTokenAt) firstTokenAt = Date.now();
           if (isFirstTextTokenOfStep) {
@@ -223,7 +254,9 @@ export async function runAgentTurn(runId: string, traceId: string, signal = new 
         } else if (event.type === "done") {
           result.routedModel = event.model;
         } else if (event.type === "error") {
-          result.error = { code: event.code, message: event.message, retryable: event.retryable };
+          result.error = hasImages
+            ? { code: "VISION_UNAVAILABLE", message: SAFE_ERROR_MESSAGES.VISION_UNAVAILABLE!, retryable: true }
+            : { code: event.code, message: event.message, retryable: event.retryable };
           break;
         }
       }
@@ -326,6 +359,17 @@ export async function runAgentTurn(runId: string, traceId: string, signal = new 
         error: RUN_CRASHED_ERROR,
       });
       updateMeta({ status: "failed", thinkingStartedAt, error: RUN_CRASHED_ERROR, tools: toolsMetadata, assets: assetsMetadata, credits: chargedCredits });
+      await emitWebhook({
+        agentRunId: runId,
+        event: "run.failed",
+        data: {
+          status: "failed",
+          toolName: null,
+          output: null,
+          creditUsed: Number(chargedCredits),
+          finishedAt: new Date().toISOString(),
+        },
+      });
       throw crash;
     }
   }
@@ -355,6 +399,17 @@ export async function runAgentTurn(runId: string, traceId: string, signal = new 
       tools: toolsMetadata,
       assets: assetsMetadata,
       credits: chargedCredits,
+    });
+    await emitWebhook({
+      agentRunId: runId,
+      event: "run.canceled",
+      data: {
+        status: "cancelled",
+        toolName: null,
+        output: null,
+        creditUsed: Number(chargedCredits),
+        finishedAt: new Date().toISOString(),
+      },
     });
     logger.info("agent-turn cancelled", { ...logContext, chargedCredits });
     return;
@@ -390,6 +445,32 @@ export async function runAgentTurn(runId: string, traceId: string, signal = new 
           ...(savedChatTitle ? { chatTitle: savedChatTitle } : {}),
         },
   );
+
+  if (result.error) {
+    await emitWebhook({
+      agentRunId: runId,
+      event: "run.failed",
+      data: {
+        status: "failed",
+        toolName: null,
+        output: null,
+        creditUsed: Number(chargedCredits),
+        finishedAt: new Date().toISOString(),
+      },
+    });
+  } else {
+    await emitWebhook({
+      agentRunId: runId,
+      event: "run.completed",
+      data: {
+        status: "succeeded",
+        toolName: null,
+        output: { blocks: contentBlocks, text: streamText },
+        creditUsed: Number(chargedCredits),
+        finishedAt: new Date().toISOString(),
+      },
+    });
+  }
 
   // 2. Suggestion: generate it AFTER finalizeRun + the final "complete" metadata
   if (status === "succeeded" && replyId) {
@@ -428,7 +509,7 @@ export async function runAgentTurn(runId: string, traceId: string, signal = new 
 export const agentTurn = task({
   id: "agent-turn",
   retry: { maxAttempts: 1 },
-  run: ({ runId, traceId }: AgentTurnPayload, { signal }) => runAgentTurn(runId, traceId, signal),
+  run: ({ runId, traceId }: AgentTurnPayload, { signal, ctx }) => runAgentTurn(runId, traceId, signal, ctx.run.id),
 });
 
 // One open stream per run, opened on the first write. `stream.append()` sends a new request
@@ -464,17 +545,29 @@ function waitAtMost(work: Promise<unknown>, ms: number) {
   return Promise.race([work.catch(() => {}), new Promise((resolve) => setTimeout(resolve, ms))]);
 }
 
-async function buildPrompt(chatId: string, userMessageId: string, planMode = false): Promise<LlmMessage[]> {
+export async function buildPrompt(chatId: string, userMessageId: string, planMode = false): Promise<LlmMessage[]> {
   const latest = await db.message.findMany({
     where: { chatId },
     cursor: { id: userMessageId },
+    include: { attachments: { orderBy: { position: "asc" } } },
     orderBy: { createdAt: "desc" },
     take: MAX_HISTORY_MESSAGES,
   });
-  const history = latest
-    .reverse()
-    .map((m) => ({ role: m.role === "assistant" ? ("assistant" as const) : ("user" as const), content: textOf(m.content) }))
-    .filter((m) => m.content.trim() !== "");
+
+  const history: LlmMessage[] = [];
+  for (const m of latest.reverse()) {
+    const text = withAttachedLine(textOf(m.content), m.attachments);
+    if (!text.trim()) continue;
+    if (m.role === "assistant") {
+      history.push({ role: "assistant", content: text });
+      continue;
+    }
+    // Only the message being answered carries the images themselves; older ones keep just the
+    // links, so a long chat doesn't resend every image on every turn.
+    const images = m.id === userMessageId ? await toImageParts(m.attachments) : [];
+    history.push({ role: "user", content: images.length ? [{ type: "text", text }, ...images] : text });
+  }
+
   const skillsSummary = getSkillsPromptSummary();
   let systemContent = skillsSummary
     ? `${SYSTEM_PROMPT}\n\n# Available Skills\nLoad these on-demand using load_skill when the user's task matches:\n${skillsSummary}`
@@ -483,6 +576,36 @@ async function buildPrompt(chatId: string, userMessageId: string, planMode = fal
     systemContent += "\n\n# Plan Mode\nResearch first (check models and prices), then call submit_plan. Don't run any paid tool until the plan is approved.";
   }
   return [{ role: "system", content: systemContent }, ...history];
+}
+
+// The links stay in the text so tools like crop_image can use them.
+function withAttachedLine(text: string, attachments: Attachment[]) {
+  if (attachments.length === 0) return text;
+  const attached = attachments.map((a, i) => `${i + 1}. ${a.kind} ${a.name} ${a.url}`).join(", ");
+  return text.trim() ? `${text}\nAttached: ${attached}` : `Attached: ${attached}`;
+}
+
+// Images go to the model inline: some model hosts can't download links. An image that is too big
+// or can't be downloaded is left out; the model still has its link.
+async function toImageParts(attachments: Attachment[]) {
+  const images = attachments.filter((a) => a.kind === "image" && a.sizeBytes <= MAX_VISION_IMAGE_BYTES);
+  const parts = await Promise.all(
+    images.map(async (a) => {
+      try {
+        const res = await fetch(a.url, { signal: AbortSignal.timeout(IMAGE_DOWNLOAD_TIMEOUT_MS) });
+        if (!res.ok) return null;
+        const data = Buffer.from(await res.arrayBuffer()).toString("base64");
+        return { type: "image_url" as const, image_url: { url: `data:${a.mimeType};base64,${data}` } };
+      } catch {
+        return null;
+      }
+    }),
+  );
+  return parts.filter((part) => part !== null);
+}
+
+function isMessageWithImages(message: LlmMessage) {
+  return Array.isArray(message.content) && message.content.some((part) => part.type === "image_url");
 }
 
 async function startReply(runId: string, chatId: string) {

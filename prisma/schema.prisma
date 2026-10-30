@@ -55,6 +55,22 @@ enum WaitpointStatus {
   expired
 }
 
+enum AttachmentSource {
+  upload
+  library
+}
+
+enum AttachmentKind {
+  image
+  video
+  audio
+}
+
+enum AttachmentStatus {
+  ready
+  failed
+}
+
 model User {
   id            String         @id @default(cuid())
   clerkUserId   String         @unique
@@ -64,6 +80,7 @@ model User {
   runs            AgentRun[]
   ledger          CreditLedger[]
   toolInvocations ToolInvocation[]
+  attachments     Attachment[]
 }
 
 model Chat {
@@ -96,6 +113,7 @@ model Message {
   updatedAt       DateTime      @updatedAt
   runsStarted     AgentRun[]    @relation("RunUserMessage")
   runReply        AgentRun?     @relation("RunAssistantMessage")
+  attachments     Attachment[]
 
   @@unique([chatId, clientRequestId])
   @@index([chatId, createdAt(sort: Desc), id(sort: Desc)])
@@ -120,14 +138,15 @@ model AgentRun {
   routedModel        String?
   usage              Json? 
   error              Json? 
-  startedAt          DateTime?
-  finishedAt         DateTime?
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
-  tools              ToolInvocation[]
-  skills             RunSkill[]
-  ledger             CreditLedger[]
-  waitpoints         Waitpoint[]
+  startedAt           DateTime?
+  finishedAt          DateTime?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  tools               ToolInvocation[]
+  skills              RunSkill[]
+  ledger              CreditLedger[]
+  waitpoints          Waitpoint[]
+  webhookSubscription WebhookSubscription?
 
   @@index([chatId, createdAt])
   @@index([userMessageId])
@@ -150,11 +169,12 @@ model ToolInvocation {
   credits        BigInt         @default(0)
   durationMs     Int?
   error          Json?
-  idempotencyKey String         @unique
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-  ledger         CreditLedger[]
-  waitpoints     Waitpoint[]
+  idempotencyKey      String               @unique
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  ledger              CreditLedger[]
+  waitpoints          Waitpoint[]
+  webhookSubscription WebhookSubscription?
 
   @@unique([runId, toolCallId])
   @@index([runId, order])
@@ -211,4 +231,63 @@ model Waitpoint {
 
   @@index([runId, status])
   @@index([tokenId])
+}
+
+model Attachment {
+  id         String           @id @default(cuid())
+  userId     String
+  user       User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  messageId  String?
+  message    Message?         @relation(fields: [messageId], references: [id], onDelete: Restrict)
+  position   Int?
+  source     AttachmentSource
+  kind       AttachmentKind
+  mimeType   String
+  sizeBytes  BigInt
+  name       String
+  url        String
+  assemblyId String?
+  status     AttachmentStatus @default(ready)
+  expiresAt  DateTime?
+  createdAt  DateTime         @default(now())
+
+  @@unique([assemblyId, url])
+  @@index([userId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([messageId, position])
+}
+
+model WebhookSubscription {
+  id               String            @id @default(cuid())
+  agentRunId       String?           @unique
+  agentRun         AgentRun?         @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
+  toolInvocationId String?           @unique
+  toolInvocation   ToolInvocation?   @relation(fields: [toolInvocationId], references: [id], onDelete: Cascade)
+  url              String
+  secret           String
+  events           String[]          @default([])
+  headers          Json?
+  metadata         Json?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  deliveries       WebhookDelivery[]
+
+  @@index([agentRunId])
+  @@index([toolInvocationId])
+}
+
+model WebhookDelivery {
+  id             String              @id @default(cuid())
+  subscriptionId String
+  subscription   WebhookSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  event          String
+  payload        Json
+  statusCode     Int?
+  attempt        Int                 @default(0)
+  status         String              @default("pending")
+  error          String?
+  idempotencyKey String              @unique
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@index([subscriptionId])
 }

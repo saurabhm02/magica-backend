@@ -45,6 +45,7 @@
                   "LLM_RATE_LIMITED",
                   "LLM_UNAVAILABLE",
                   "LLM_EMPTY_STREAM",
+                  "VISION_UNAVAILABLE",
                   "LLM_MALFORMED_TOOL_CALL",
                   "MAX_TURNS",
                   "MAGICA_UNAUTHORIZED",
@@ -73,6 +74,9 @@
               },
               "traceId": {
                 "type": "string"
+              },
+              "retryAfterSeconds": {
+                "type": "number"
               }
             },
             "required": [
@@ -82,6 +86,9 @@
               "traceId"
             ],
             "additionalProperties": false
+          },
+          "retryAfterSeconds": {
+            "type": "number"
           }
         },
         "required": [
@@ -179,6 +186,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -207,6 +215,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -216,6 +227,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -249,6 +263,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -277,6 +292,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -286,6 +304,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -349,6 +370,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -377,6 +399,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -386,6 +411,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -419,6 +447,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -447,6 +476,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -456,6 +488,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -597,6 +632,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -625,6 +661,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -634,6 +673,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -667,6 +709,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -695,6 +738,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -704,6 +750,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -838,6 +887,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -866,6 +916,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -875,6 +928,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -908,6 +964,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -936,6 +993,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -945,6 +1005,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -1045,6 +1108,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -1073,6 +1137,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -1082,6 +1149,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -1115,6 +1185,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -1143,6 +1214,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -1152,6 +1226,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -1185,6 +1262,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -1213,6 +1291,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -1222,6 +1303,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -1338,6 +1422,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -1366,6 +1451,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -1375,6 +1463,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -1408,6 +1499,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -1436,6 +1528,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -1445,6 +1540,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -1478,6 +1576,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -1506,6 +1605,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -1515,6 +1617,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -1548,6 +1653,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -1576,6 +1682,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -1585,6 +1694,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -1657,6 +1769,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -1685,6 +1798,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -1694,6 +1810,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -1727,6 +1846,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -1755,6 +1875,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -1764,6 +1887,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -1797,6 +1923,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -1825,6 +1952,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -1834,6 +1964,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -1971,6 +2104,9 @@
                                     },
                                     "text": {
                                       "type": "string"
+                                    },
+                                    "title": {
+                                      "type": "string"
                                     }
                                   },
                                   "required": [
@@ -2069,6 +2205,7 @@
                                             "LLM_RATE_LIMITED",
                                             "LLM_UNAVAILABLE",
                                             "LLM_EMPTY_STREAM",
+                                            "VISION_UNAVAILABLE",
                                             "LLM_MALFORMED_TOOL_CALL",
                                             "MAX_TURNS",
                                             "MAGICA_UNAUTHORIZED",
@@ -2213,6 +2350,96 @@
                               "null"
                             ]
                           },
+                          "suggestion": {
+                            "type": "string"
+                          },
+                          "attachments": {
+                            "default": [],
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "messageId": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "position": {
+                                  "type": [
+                                    "number",
+                                    "null"
+                                  ]
+                                },
+                                "source": {
+                                  "type": "string",
+                                  "enum": [
+                                    "upload",
+                                    "library"
+                                  ]
+                                },
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "image",
+                                    "video",
+                                    "audio"
+                                  ]
+                                },
+                                "mimeType": {
+                                  "type": "string"
+                                },
+                                "sizeBytes": {
+                                  "type": "number"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "url": {
+                                  "type": "string"
+                                },
+                                "status": {
+                                  "type": "string",
+                                  "enum": [
+                                    "ready",
+                                    "failed"
+                                  ]
+                                },
+                                "expiresAt": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "format": "date-time",
+                                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "createdAt": {
+                                  "type": "string",
+                                  "format": "date-time",
+                                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "source",
+                                "kind",
+                                "mimeType",
+                                "sizeBytes",
+                                "name",
+                                "url",
+                                "status",
+                                "createdAt"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
                           "createdAt": {
                             "type": "string",
                             "format": "date-time",
@@ -2231,6 +2458,7 @@
                           "status",
                           "content",
                           "clientRequestId",
+                          "attachments",
                           "createdAt",
                           "updatedAt"
                         ],
@@ -2276,6 +2504,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -2304,6 +2533,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -2313,6 +2545,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -2346,6 +2581,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -2374,6 +2610,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -2383,6 +2622,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -2416,6 +2658,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -2444,6 +2687,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -2453,6 +2699,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -2496,6 +2745,7 @@
                     "maxLength": 10000
                   },
                   "attachmentIds": {
+                    "maxItems": 10,
                     "type": "array",
                     "items": {
                       "type": "string"
@@ -2512,6 +2762,48 @@
                   "model": {
                     "type": "string",
                     "const": "openrouter/free"
+                  },
+                  "webhook": {
+                    "type": "object",
+                    "properties": {
+                      "url": {
+                        "type": "string",
+                        "format": "uri"
+                      },
+                      "events": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "run.started",
+                            "run.completed",
+                            "run.failed",
+                            "run.canceled",
+                            "tool.completed"
+                          ]
+                        }
+                      },
+                      "metadata": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {}
+                      },
+                      "headers": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "url"
+                    ],
+                    "additionalProperties": false
                   }
                 },
                 "required": [
@@ -2556,6 +2848,18 @@
                         "accessToken"
                       ],
                       "additionalProperties": false
+                    },
+                    "webhook": {
+                      "type": "object",
+                      "properties": {
+                        "signingSecret": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "signingSecret"
+                      ],
+                      "additionalProperties": false
                     }
                   },
                   "required": [
@@ -2592,6 +2896,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -2620,6 +2925,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -2629,6 +2937,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -2662,6 +2973,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -2690,6 +3002,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -2699,6 +3014,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -2732,6 +3050,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -2760,6 +3079,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -2769,6 +3091,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -2802,6 +3127,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -2830,6 +3156,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -2839,6 +3168,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -2872,6 +3204,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -2900,6 +3233,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -2909,6 +3245,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -3058,6 +3397,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -3086,6 +3426,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -3095,6 +3438,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -3128,6 +3474,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -3156,6 +3503,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -3165,6 +3515,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -3198,6 +3551,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -3226,6 +3580,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -3235,6 +3592,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -3330,6 +3690,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -3358,6 +3719,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -3367,6 +3731,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -3400,6 +3767,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -3428,6 +3796,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -3437,6 +3808,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -3470,6 +3844,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -3498,6 +3873,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -3507,6 +3885,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -3677,6 +4058,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -3705,6 +4087,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -3714,6 +4099,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -3747,6 +4135,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -3775,6 +4164,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -3784,6 +4176,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -3817,6 +4212,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -3845,6 +4241,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -3854,6 +4253,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -3887,6 +4289,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -3915,6 +4318,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -3924,6 +4330,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -4011,6 +4420,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -4039,6 +4449,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -4048,6 +4461,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -4081,6 +4497,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -4109,6 +4526,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -4118,6 +4538,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -4228,6 +4651,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -4256,6 +4680,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -4265,6 +4692,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -4298,6 +4728,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -4326,6 +4757,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -4335,6 +4769,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -4368,6 +4805,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -4396,6 +4834,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -4405,6 +4846,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -4578,6 +5022,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -4606,6 +5051,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -4615,6 +5063,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -4648,6 +5099,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -4676,6 +5128,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -4685,6 +5140,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -4718,6 +5176,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -4746,6 +5205,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -4755,6 +5217,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -4798,6 +5263,48 @@
                       "type": "string"
                     },
                     "additionalProperties": {}
+                  },
+                  "webhook": {
+                    "type": "object",
+                    "properties": {
+                      "url": {
+                        "type": "string",
+                        "format": "uri"
+                      },
+                      "events": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "run.started",
+                            "run.completed",
+                            "run.failed",
+                            "run.canceled",
+                            "tool.completed"
+                          ]
+                        }
+                      },
+                      "metadata": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {}
+                      },
+                      "headers": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "url"
+                    ],
+                    "additionalProperties": false
                   }
                 },
                 "required": [
@@ -4834,6 +5341,18 @@
                         "accessToken"
                       ],
                       "additionalProperties": false
+                    },
+                    "webhook": {
+                      "type": "object",
+                      "properties": {
+                        "signingSecret": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "signingSecret"
+                      ],
+                      "additionalProperties": false
                     }
                   },
                   "required": [
@@ -4868,6 +5387,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -4896,6 +5416,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -4905,6 +5428,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -4938,6 +5464,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -4966,6 +5493,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -4975,6 +5505,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -5008,6 +5541,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -5036,6 +5570,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -5045,6 +5582,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -5078,6 +5618,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -5106,6 +5647,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -5115,6 +5659,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -5249,6 +5796,7 @@
                                 "LLM_RATE_LIMITED",
                                 "LLM_UNAVAILABLE",
                                 "LLM_EMPTY_STREAM",
+                                "VISION_UNAVAILABLE",
                                 "LLM_MALFORMED_TOOL_CALL",
                                 "MAX_TURNS",
                                 "MAGICA_UNAUTHORIZED",
@@ -5350,6 +5898,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -5378,6 +5927,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -5387,6 +5939,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -5420,6 +5975,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -5448,6 +6004,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -5457,6 +6016,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -5490,6 +6052,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -5518,6 +6081,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -5527,6 +6093,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -5606,6 +6175,34 @@
                               "video"
                             ]
                           },
+                          "source": {
+                            "type": "string",
+                            "enum": [
+                              "generated",
+                              "upload"
+                            ]
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "sizeBytes": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "prompt": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "attachmentId": {
+                            "type": "string"
+                          },
+                          "toolInvocationId": {
+                            "type": "string"
+                          },
                           "chatId": {
                             "type": "string"
                           },
@@ -5621,8 +6218,10 @@
                         "required": [
                           "url",
                           "type",
-                          "chatId",
-                          "toolName",
+                          "source",
+                          "name",
+                          "sizeBytes",
+                          "prompt",
                           "createdAt"
                         ],
                         "additionalProperties": false
@@ -5633,11 +6232,17 @@
                         "string",
                         "null"
                       ]
+                    },
+                    "total": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
                     }
                   },
                   "required": [
                     "items",
-                    "nextCursor"
+                    "nextCursor",
+                    "total"
                   ],
                   "additionalProperties": false
                 }
@@ -5667,6 +6272,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -5695,6 +6301,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -5704,6 +6313,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -5737,6 +6349,7 @@
                             "LLM_RATE_LIMITED",
                             "LLM_UNAVAILABLE",
                             "LLM_EMPTY_STREAM",
+                            "VISION_UNAVAILABLE",
                             "LLM_MALFORMED_TOOL_CALL",
                             "MAX_TURNS",
                             "MAGICA_UNAUTHORIZED",
@@ -5765,6 +6378,9 @@
                         },
                         "traceId": {
                           "type": "string"
+                        },
+                        "retryAfterSeconds": {
+                          "type": "number"
                         }
                       },
                       "required": [
@@ -5774,6 +6390,9 @@
                         "traceId"
                       ],
                       "additionalProperties": false
+                    },
+                    "retryAfterSeconds": {
+                      "type": "number"
                     }
                   },
                   "required": [

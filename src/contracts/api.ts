@@ -1,9 +1,14 @@
 import { z } from "zod";
+import { MAX_ATTACHMENTS_PER_MESSAGE } from "./attachment";
 import { Chat } from "./chat";
 import { SafeError } from "./errors";
 import { Message } from "./message";
 import { CursorQuery, Page } from "./pagination";
 import { RunMetadata, RunStatus } from "./run";
+import { WebhookConfigInput, WebhookCreateResponse } from "./webhook";
+
+export * from "./attachment";
+export * from "./webhook";
 
 export const MAX_MESSAGE_LENGTH = 10000;
 export const MAX_TITLE_LENGTH = 200;
@@ -72,10 +77,11 @@ export type ListMessagesResponse = z.infer<typeof ListMessagesResponse>;
 
 export const SendMessageRequest = z.object({
   content: z.string().trim().min(1).max(MAX_MESSAGE_LENGTH),
-  attachmentIds: z.array(z.string()).optional(),
+  attachmentIds: z.array(z.string()).max(MAX_ATTACHMENTS_PER_MESSAGE).optional(),
   clientRequestId: z.string().min(1),
   planMode: z.boolean().default(false),
   model: z.literal("openrouter/free").optional(),
+  webhook: WebhookConfigInput.optional(),
 });
 export type SendMessageRequest = z.infer<typeof SendMessageRequest>;
 
@@ -84,8 +90,37 @@ export const SendMessageResponse = z.object({
   messageId: z.string(),
   runId: z.string(),
   realtime: z.object({ runId: z.string(), accessToken: z.string() }),
+  webhook: WebhookCreateResponse.optional(),
 });
 export type SendMessageResponse = z.infer<typeof SendMessageResponse>;
+
+export const ModelInfo = z.object({
+  id: z.string(),
+  label: z.string(),
+  default: z.boolean(),
+});
+export type ModelInfo = z.infer<typeof ModelInfo>;
+
+export const ListModelsResponse = z.object({
+  models: z.array(ModelInfo),
+  visionModels: z.array(z.string()),
+});
+export type ListModelsResponse = z.infer<typeof ListModelsResponse>;
+
+export const GetRunResponse = z.object({
+  id: z.string(),
+  chatId: z.string(),
+  status: RunStatus,
+  error: SafeError.nullable().optional(),
+  startedAt: z.iso.datetime().nullable(),
+  finishedAt: z.iso.datetime().nullable(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+  chargedCredits: z.number().int().nonnegative(),
+  routedModel: z.string().nullable().optional(),
+  assistantMessageId: z.string().nullable().optional(),
+});
+export type GetRunResponse = z.infer<typeof GetRunResponse>;
 
 export const RunResponse = z.object({
   id: z.string(),
@@ -177,21 +212,33 @@ export type CancelRunResponse = z.infer<typeof CancelRunResponse>;
 export const AssetType = z.enum(["image", "video"]);
 export type AssetType = z.infer<typeof AssetType>;
 
+export const AssetSource = z.enum(["all", "generated", "uploads"]);
+export type AssetSource = z.infer<typeof AssetSource>;
+
 export const AssetItem = z.object({
   url: z.string(),
   type: AssetType,
-  chatId: z.string(),
-  toolName: z.string(),
+  source: z.enum(["generated", "upload"]),
+  name: z.string(),
+  sizeBytes: z.number().nullable(),
+  prompt: z.string().nullable(),
+  attachmentId: z.string().optional(),
+  toolInvocationId: z.string().optional(),
+  chatId: z.string().optional(),
+  toolName: z.string().optional(),
   createdAt: z.iso.datetime(),
 });
 export type AssetItem = z.infer<typeof AssetItem>;
 
 export const ListAssetsQuery = CursorQuery.extend({
   type: AssetType.optional(),
+  source: AssetSource.default("all"),
 });
 export type ListAssetsQuery = z.infer<typeof ListAssetsQuery>;
 
-export const ListAssetsResponse = Page(AssetItem);
+export const ListAssetsResponse = Page(AssetItem).extend({
+  total: z.number().int().nonnegative(),
+});
 export type ListAssetsResponse = z.infer<typeof ListAssetsResponse>;
 
 export const ToolCategory = z.enum(["image", "video", "util"]);
@@ -223,8 +270,19 @@ export const ToolDetailResponse = z.object({
 });
 export type ToolDetailResponse = z.infer<typeof ToolDetailResponse>;
 
+export const EstimateToolRequest = z.object({
+  input: z.unknown(),
+});
+export type EstimateToolRequest = z.infer<typeof EstimateToolRequest>;
+
+export const EstimateToolResponse = z.object({
+  credits: z.number().int().nonnegative(),
+});
+export type EstimateToolResponse = z.infer<typeof EstimateToolResponse>;
+
 export const CreateToolRunRequest = z.object({
   input: z.record(z.string(), z.unknown()),
+  webhook: WebhookConfigInput.optional(),
 });
 export type CreateToolRunRequest = z.infer<typeof CreateToolRunRequest>;
 
@@ -234,6 +292,7 @@ export const CreateToolRunResponse = z.object({
     runId: z.string(),
     accessToken: z.string(),
   }),
+  webhook: WebhookCreateResponse.optional(),
 });
 export type CreateToolRunResponse = z.infer<typeof CreateToolRunResponse>;
 

@@ -76,7 +76,7 @@ describe("Chat Titles and Suggested Next Steps", () => {
       replyFinishedAt = Date.now();
       yield { type: "done", model: "test-model" };
     }
-    vi.spyOn(llmModule, "streamChat").mockImplementation(() => gen());
+    vi.spyOn(llmModule, "streamChatWithFallback").mockImplementation(() => gen());
 
     const replacedMetadata: Record<string, unknown>[] = [];
     vi.spyOn(metadata, "replace").mockImplementation((data) => {
@@ -113,7 +113,7 @@ describe("Chat Titles and Suggested Next Steps", () => {
       yield { type: "text-delta", text: "Here is a clean minimal logo." };
       yield { type: "done", model: "test-model" };
     }
-    vi.spyOn(llmModule, "streamChat").mockImplementation(() => gen());
+    vi.spyOn(llmModule, "streamChatWithFallback").mockImplementation(() => gen());
     vi.spyOn(llmModule, "generateChatTitle").mockResolvedValue("Minimal Logo");
 
     let completeMetadataSentBeforeSuggestion = false;
@@ -159,7 +159,7 @@ describe("Chat Titles and Suggested Next Steps", () => {
       yield { type: "text-delta", text: "First reply." };
       yield { type: "done", model: "test-model" };
     }
-    vi.spyOn(llmModule, "streamChat").mockImplementation(() => gen());
+    vi.spyOn(llmModule, "streamChatWithFallback").mockImplementation(() => gen());
     vi.spyOn(metadata, "replace").mockImplementation(() => {});
     vi.spyOn(metadata, "set").mockReturnValue(metadata);
 
@@ -209,7 +209,7 @@ describe("Chat Titles and Suggested Next Steps", () => {
       yield { type: "text-delta", text: "Logo generated." };
       yield { type: "done", model: "test-model" };
     }
-    vi.spyOn(llmModule, "streamChat").mockImplementation(() => gen());
+    vi.spyOn(llmModule, "streamChatWithFallback").mockImplementation(() => gen());
     vi.spyOn(metadata, "replace").mockImplementation(() => {});
     vi.spyOn(metadata, "set").mockReturnValue(metadata);
 
@@ -238,7 +238,7 @@ describe("Chat Titles and Suggested Next Steps", () => {
       yield { type: "text-delta", text: "Once upon a time..." };
       yield { type: "done", model: "test-model" };
     }
-    vi.spyOn(llmModule, "streamChat").mockImplementation(() => gen());
+    vi.spyOn(llmModule, "streamChatWithFallback").mockImplementation(() => gen());
     vi.spyOn(metadata, "replace").mockImplementation(() => {});
     vi.spyOn(metadata, "set").mockReturnValue(metadata);
 
@@ -279,7 +279,7 @@ describe("Chat Titles and Suggested Next Steps", () => {
     async function* errorGen(): AsyncGenerator<LlmEvent> {
       yield { type: "error", code: "LLM_UNAVAILABLE", message: "Service down", retryable: false };
     }
-    vi.spyOn(llmModule, "streamChat").mockImplementation(() => errorGen());
+    vi.spyOn(llmModule, "streamChatWithFallback").mockImplementation(() => errorGen());
 
     const suggestionSpy = vi.spyOn(llmModule, "generateSuggestion");
 

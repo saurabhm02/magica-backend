@@ -100,5 +100,7 @@ export type LogContext = {
   chatId?: string;
   runId?: string;
   messageId?: string;
+  processId?: string;
+  waitpointTokenId?: string;
   [key: string]: unknown;
 };

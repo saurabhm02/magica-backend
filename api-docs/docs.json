@@ -38,7 +38,8 @@
       {
         "group": "Integrations",
         "pages": [
-          "webhooks"
+          "webhooks",
+          "uploads"
         ]
       },
       {

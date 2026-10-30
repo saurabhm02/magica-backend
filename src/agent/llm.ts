@@ -13,15 +13,26 @@ const client = new OpenAI({
 });
 
 
+// We only ever use free models. This stops a paid model from running even if one is passed in by mistake.
+export function isFreeModel(model: string) {
+  return model === "openrouter/free" || model.endsWith(":free");
+}
+
 export async function* streamChat(
   messages: LlmMessage[],
   signal: AbortSignal,
   tools?: OpenAI.Chat.Completions.ChatCompletionTool[],
+  model: string = env.LLM_MODEL,
 ): AsyncGenerator<LlmEvent> {
+  if (!isFreeModel(model)) {
+    logger.error("refused a model that isn't free", { model });
+    yield toErrorEvent("LLM_UNAVAILABLE", false);
+    return;
+  }
   try {
     const stream = await client.chat.completions.create(
       { 
-        model: env.LLM_MODEL, 
+        model, 
         messages,
         stream: true, 
         stream_options: { include_usage: true },
@@ -30,11 +41,11 @@ export async function* streamChat(
       { signal },
     );
 
-    let model = "";
+    let routedModel = "";
     let sawOutput = false;
 
     for await (const chunk of stream) {
-      model = chunk.model || model;
+      routedModel = chunk.model || routedModel;
 
       // `reasoning` is OpenRouter's field for the model's thinking; the OpenAI types don't know it.
       const delta = chunk.choices[0]?.delta as (OpenAI.Chat.Completions.ChatCompletionChunk.Choice.Delta & { reasoning?: string }) | undefined;
@@ -71,13 +82,42 @@ export async function* streamChat(
       yield toErrorEvent("LLM_EMPTY_STREAM", true);
       return;
     }
-    yield { type: "done", model };
+    yield { type: "done", model: routedModel };
   } catch (error) {
     if (signal.aborted) throw error; 
 
     logger.warn("llm stream failed", { detail: error instanceof Error ? error.message : String(error) });
     const { code, retryable } = classifyError(error);
     yield toErrorEvent(code, retryable);
+  }
+}
+
+// Tries each model in order. A model that fails before replying is skipped; once a model has
+// started replying we stay with it, because its partial output is already on the user's screen.
+export async function* streamChatWithFallback(
+  models: string[],
+  messages: LlmMessage[],
+  signal: AbortSignal,
+  tools?: OpenAI.Chat.Completions.ChatCompletionTool[],
+): AsyncGenerator<LlmEvent> {
+  for (const [index, model] of models.entries()) {
+    const isLastModel = index === models.length - 1;
+    let hasReplied = false;
+    let failedBeforeReply = false;
+
+    for await (const event of streamChat(messages, signal, tools, model)) {
+      if (event.type === "error" && !hasReplied && !isLastModel) {
+        failedBeforeReply = true;
+        break;
+      }
+      if (event.type === "text-delta" || event.type === "reasoning-delta" || event.type === "tool-call-delta") {
+        hasReplied = true;
+      }
+      yield event;
+    }
+
+    if (!failedBeforeReply) return;
+    logger.warn("model failed before replying, trying the next one", { model });
   }
 }
 

@@ -66,7 +66,7 @@ describe("Phase 5: Runs Lifecycle (Cancel, Reload Recovery, Reconnect)", () => {
       throw abortError;
     }
 
-    vi.spyOn(llmModule, "streamChat").mockImplementation(() => gen());
+    vi.spyOn(llmModule, "streamChatWithFallback").mockImplementation(() => gen());
 
     await runAgentTurn(runId, "test-stream-cancel-trace", controller.signal);
 
@@ -100,7 +100,7 @@ describe("Phase 5: Runs Lifecycle (Cancel, Reload Recovery, Reconnect)", () => {
       yield { type: "done", model: "test-model" };
     }
 
-    vi.spyOn(llmModule, "streamChat").mockImplementation(() => gen());
+    vi.spyOn(llmModule, "streamChatWithFallback").mockImplementation(() => gen());
 
     // When the tool batch is triggered, simulate cancellation abort
     vi.spyOn(magicaRun, "batchTriggerAndWait").mockImplementation(async () => {

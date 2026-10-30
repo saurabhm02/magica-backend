@@ -68,6 +68,7 @@ export const SAFE_ERROR_MESSAGES: Record<ErrorCode, string> = {
   LLM_RATE_LIMITED: "The free model is busy right now. Please try again in a moment.",
   LLM_UNAVAILABLE: "The model is unavailable right now. Please try again.",
   LLM_EMPTY_STREAM: "The model returned an empty reply. Please try again.",
+  VISION_UNAVAILABLE: "Sorry, I can't look at images right now. The free image models are busy, please try again in a minute.",
   LLM_MALFORMED_TOOL_CALL: "Tool call format error.",
   MAX_TURNS: "Stopped after too many steps.",
   MAGICA_UNAUTHORIZED: "Image service not available.",
@@ -111,10 +112,20 @@ export const DISPATCH_FAILED_ERROR: SafeError = {
   retryable: true,
 };
 
+export const RATE_LIMIT_MESSAGES_PER_MINUTE = 20;
+export const RATE_LIMIT_TOOL_RUNS_PER_MINUTE = 10;
+export const RATE_LIMIT_WINDOW_MS = 60_000;
+
 export const HTTP_STATUS_BY_ERROR_CODE: Partial<Record<ErrorCode, number>> = {
   VALIDATION_FAILED: 400,
   TOOL_INPUT_INVALID: 400,
   INSUFFICIENT_CREDITS: 400,
+  UPLOAD_TOO_LARGE: 400,
+  UPLOAD_TYPE_NOT_ALLOWED: 400,
+  RATE_LIMITED: 429,
+  LLM_RATE_LIMITED: 429,
+  MAGICA_RATE_LIMITED: 429,
+  UPLOAD_QUOTA_EXCEEDED: 429,
   UNAUTHORIZED: 401,
   NOT_FOUND: 404,
   RUN_ALREADY_ACTIVE: 409,
@@ -136,5 +147,31 @@ export const WAITPOINT_TIMEOUT = "24h";
 export const WAITPOINT_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
 export const FOLLOW_UP_TIMEOUT_MS = 8000;
+
+// openrouter/free sometimes routes to a model that can't see images, and that model then makes
+// up a description. When the user's message has images we try these free vision models in order.
+export const VISION_MODELS = [
+  "nvidia/nemotron-3.5-super-vl:free",
+  "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+  "google/gemma-4-31b-it:free",
+];
+
+export function validateVisionModels(models: readonly string[] = VISION_MODELS): void {
+  for (const model of models) {
+    if (!model.endsWith(":free")) {
+      throw new Error(`Refused vision model "${model}": must end in ":free"`);
+    }
+  }
+}
+
+validateVisionModels();
+export const MAX_VISION_IMAGE_BYTES = 5 * 1024 * 1024;
+export const IMAGE_DOWNLOAD_TIMEOUT_MS = 15_000;
+
+export {
+  ALLOWED_ATTACHMENT_MIME_TYPES,
+  MAX_ATTACHMENTS_PER_MESSAGE,
+  MAX_UPLOAD_BYTES,
+} from "@/contracts/attachment";
 
 

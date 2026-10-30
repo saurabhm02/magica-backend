@@ -18,10 +18,16 @@ export const POST = route<ChatRouteContext>(async (req, { params }, traceId) => 
   const user = await requireUser(req);
   const { chatId } = await params;
   const body = parseInput(SendMessageRequest, await readJson(req));
-  const { message, run } = await sendMessage(user.id, chatId, body);
+  const { message, run, signingSecret } = await sendMessage(user.id, chatId, body);
   const { runId, accessToken } = await dispatchRun(run, traceId);
   return NextResponse.json(
-    SendMessageResponse.parse({ chatId, messageId: message.id, runId: run.id, realtime: { runId, accessToken } }),
+    SendMessageResponse.parse({
+      chatId,
+      messageId: message.id,
+      runId: run.id,
+      realtime: { runId, accessToken },
+      webhook: signingSecret ? { signingSecret } : undefined,
+    }),
     { status: 201 },
   );
 });

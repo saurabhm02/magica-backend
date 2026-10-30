@@ -112,7 +112,7 @@ describe("Phase 6: Human Input Waitpoints", () => {
         yield { type: "done", model: "test-model" };
       }
     }
-    vi.spyOn(llmModule, "streamChat").mockImplementation(() => gen());
+    vi.spyOn(llmModule, "streamChatWithFallback").mockImplementation(() => gen());
 
     // Start turn asynchronously
     const turnPromise = runAgentTurn(runId, "trace_test_answer");
@@ -309,7 +309,7 @@ describe("Phase 6: Human Input Waitpoints", () => {
         yield { type: "done", model: "test-model" };
       }
     }
-    vi.spyOn(llmModule, "streamChat").mockImplementation(() => gen());
+    vi.spyOn(llmModule, "streamChatWithFallback").mockImplementation(() => gen());
 
     const turnPromise = runAgentTurn(runId, "trace_test_skip");
 
@@ -387,7 +387,7 @@ describe("Phase 6: Human Input Waitpoints", () => {
       };
       yield { type: "done", model: "test-model" };
     }
-    vi.spyOn(llmModule, "streamChat").mockImplementation(() => gen());
+    vi.spyOn(llmModule, "streamChatWithFallback").mockImplementation(() => gen());
 
     // Should complete cleanly without throwing an unhandled exception
     await runAgentTurn(runId, "trace_test_expiry");

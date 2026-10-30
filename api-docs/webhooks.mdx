@@ -1,17 +1,167 @@
 ---
 title: "Webhooks"
-description: "Upcoming outbound webhook support for server-to-server notifications."
+description: "Receive real-time notifications for agent runs and tool executions."
 ---
 
-Outbound webhooks are coming soon to the Magica Agent Chat API.
+You can attach optional webhooks when starting an agent chat run or a direct tool execution. Instead of keeping a connection open or polling, your server receives signed HTTPS POST requests as the run progresses.
 
-Instead of keeping WebSocket connections open or polling the active run endpoints, you will be able to register an HTTPS endpoint in your developer dashboard to receive asynchronous event payloads when key milestones occur:
+## Configuring Webhooks
 
-- `agent.started` – An agent run has been dispatched and is thinking.
-- `agent.completed` – An agent run has finished successfully with its final reply.
-- `agent.failed` – An agent run failed or encountered an error.
-- `tool.completed` – A paid tool execution (e.g. image generation, video merge) completed and produced assets.
+When dispatching an agent run (`POST /api/v1/chats/:chatId/messages`) or a tool run (`POST /api/v1/tools/:name/runs`), include a `webhook` object:
 
-<Note>
-  Webhook event payloads and signature verification headers will be published alongside the feature release. Today, use the [Realtime Stream](/concepts/realtime) or poll `GET /chats/:chatId/active-run` for state changes.
-</Note>
+```json
+{
+  "content": "Generate a picture of a sunrise over the mountains",
+  "clientRequestId": "req_8392019",
+  "webhook": {
+    "url": "https://api.yourdomain.com/webhooks/magica",
+    "events": ["run.started", "run.completed", "run.failed", "run.canceled", "tool.completed"],
+    "metadata": {
+      "userId": "user_456",
+      "internalJobId": "job_789"
+    },
+    "headers": {
+      "X-Custom-Token": "secret_abc_123"
+    }
+  }
+}
+```
+
+### Parameters
+
+- `url` *(string, required)*: The HTTPS endpoint to receive webhook events. Must use `https://`. Calls targeting `localhost`, loopback, or private internal IP addresses (such as `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, or `169.254.0.0/16`) are rejected.
+- `events` *(string[], optional)*: Array of events to subscribe to. Defaults to all events if omitted.
+- `metadata` *(object, optional)*: Key-value data that will be echoed back unchanged in every event payload.
+- `headers` *(object, optional)*: Custom headers to include on each outbound webhook request (e.g. for authentication). Custom headers cannot override `Content-Type`, `User-Agent`, or `X-Webhook-Signature`.
+
+### Supported Events
+
+| Event | Description |
+| :--- | :--- |
+| `run.started` | The run has started processing. |
+| `run.completed` | The run has finished successfully. Output and credit usage are included. |
+| `run.failed` | The run failed due to an error or timeout. |
+| `run.canceled` | The run was cancelled by the user or client. |
+| `tool.completed` | A tool execution completed during an agent run. Output and credit usage are included. |
+
+## Signing Secret
+
+Every request with a webhook receives a unique signing secret returned once in the create response:
+
+```json
+{
+  "chatId": "cmu1234560001",
+  "messageId": "msg_987654",
+  "runId": "run_5551212",
+  "realtime": {
+    "runId": "trig_run_abc",
+    "accessToken": "tok_xyz"
+  },
+  "webhook": {
+    "signingSecret": "whsec_3a7b9c1d2e4f5a6b7c8d9e0f"
+  }
+}
+```
+
+Save `webhook.signingSecret` to verify signatures on incoming event deliveries.
+
+## Event Payload
+
+Each webhook event delivers a JSON body with the following structure:
+
+```json
+{
+  "type": "run.completed",
+  "runId": "run_5551212",
+  "data": {
+    "status": "succeeded",
+    "toolName": "flux_pro",
+    "output": {
+      "image_url": "https://storage.magica.com/generated/output.jpg"
+    },
+    "creditUsed": 40,
+    "finishedAt": "2026-10-30T12:00:00.000Z"
+  },
+  "metadata": {
+    "userId": "user_456",
+    "internalJobId": "job_789"
+  }
+}
+```
+
+- `type`: The event name (`run.started`, `run.completed`, `run.failed`, `run.canceled`, `tool.completed`).
+- `runId`: The unique ID of the agent run or tool run.
+- `data.status`: Current status (`running`, `succeeded`, `failed`, `cancelled`).
+- `data.toolName`: Tool name for direct tool executions and `tool.completed` events, or `null` for run-level events.
+- `data.output`: Result payload on completion, or `null`.
+- `data.creditUsed`: Total credits charged, or `null` before completion.
+- `data.finishedAt`: ISO 8601 timestamp when the execution concluded, or `null` if started.
+- `metadata`: Any custom metadata passed in the initial request.
+
+## Delivery Headers
+
+Magica includes the following headers with each webhook request:
+
+- `Content-Type`: `application/json`
+- `User-Agent`: `Magica-Webhooks/1.0`
+- `X-Webhook-Signature`: Stripe-style signature formatted as `t=<unix_seconds>,v1=<hex_hmac>`.
+- Any custom headers defined in `webhook.headers` (excluding protected headers).
+
+## Verifying Signatures
+
+To ensure requests originate from Magica, have not been tampered with, and are not replay attacks, extract the timestamp `t` and signature `v1` from `X-Webhook-Signature`, verify that the timestamp is within a 5-minute tolerance window, and compare the computed HMAC-SHA256 signature over `${t}.${rawBody}`.
+
+Here is the exact verification code in TypeScript / Node.js:
+
+```ts
+import crypto from "node:crypto";
+
+export function verifyWebhookSignature({
+  rawBody,
+  signatureHeader,
+  secret,
+  toleranceSeconds = 300, // 5 minutes
+}: {
+  rawBody: string;
+  signatureHeader: string;
+  secret: string;
+  toleranceSeconds?: number;
+}): boolean {
+  const parts = signatureHeader.split(",");
+  const timestampPart = parts.find((p) => p.startsWith("t="));
+  const signaturePart = parts.find((p) => p.startsWith("v1="));
+
+  if (!timestampPart || !signaturePart) {
+    throw new Error("Invalid signature header format");
+  }
+
+  const timestamp = parseInt(timestampPart.slice(2), 10);
+  const signature = signaturePart.slice(3);
+
+  if (isNaN(timestamp)) {
+    throw new Error("Invalid timestamp");
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  if (Math.abs(now - timestamp) > toleranceSeconds) {
+    throw new Error("Webhook timestamp outside acceptable tolerance window");
+  }
+
+  const expectedSignature = crypto
+    .createHmac("sha256", secret)
+    .update(`${timestamp}.${rawBody}`)
+    .digest("hex");
+
+  return crypto.timingSafeEqual(
+    Buffer.from(signature, "hex"),
+    Buffer.from(expectedSignature, "hex"),
+  );
+}
+```
+
+## Retries & Delivery Guarantees
+
+- **Asynchronous Execution**: Webhook deliveries are dispatched in Trigger.dev tasks and never block or delay your agent runs or tool executions.
+- **Bounded Retries**: If your endpoint returns a 429 or 5xx status code or a network timeout occurs, delivery is automatically retried up to 3 times with exponential backoff (1s, 2s, 4s). Client errors (4xx, except 429) and redirects (3xx) are not retried.
+- **Delivery Tracking**: Every delivery attempt, including HTTP status code and attempt count, is recorded in the database.
+- **Idempotency**: Each event delivery uses an idempotency key (`${subscriptionId}:${event}`) so you can safely handle duplicate deliveries.

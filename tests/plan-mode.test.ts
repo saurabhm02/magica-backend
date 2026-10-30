@@ -312,7 +312,7 @@ describe("Plan Mode", () => {
         yield { type: "done", model: "test-model" };
       }
     }
-    vi.spyOn(llmModule, "streamChat").mockImplementation(() => gen());
+    vi.spyOn(llmModule, "streamChatWithFallback").mockImplementation(() => gen());
 
     const turnPromise = runAgentTurn(runId, "trace_run_all");
 
@@ -410,7 +410,7 @@ describe("Plan Mode", () => {
         yield { type: "done", model: "test-model" };
       }
     }
-    vi.spyOn(llmModule, "streamChat").mockImplementation((msgs) => gen(msgs));
+    vi.spyOn(llmModule, "streamChatWithFallback").mockImplementation((_models, msgs) => gen(msgs));
 
     const turnPromise = runAgentTurn(runId, "trace_request_changes");
 

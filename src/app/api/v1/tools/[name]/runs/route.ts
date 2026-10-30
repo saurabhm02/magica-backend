@@ -8,7 +8,7 @@ export const POST = route<{ params: Promise<{ name: string }> }>(async (req, { p
   const user = await requireUser(req);
   const { name } = await params;
   const body = parseInput(CreateToolRunRequest, await readJson(req));
-  const res = await startToolRun(user, name, body.input);
+  const res = await startToolRun(user, name, body.input, body.webhook);
   return NextResponse.json(CreateToolRunResponse.parse(res));
 });
 

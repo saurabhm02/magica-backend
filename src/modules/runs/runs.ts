@@ -1,4 +1,5 @@
 import type { AgentRun } from "@prisma/client";
+import type { SafeError } from "@/contracts/errors";
 import { auth, runs, tasks } from "@trigger.dev/sdk";
 import type { agentTurn } from "@/trigger/agent-turn";
 import {
@@ -14,6 +15,7 @@ import { logger } from "@/lib/logger";
 import { getOwnedChat } from "@/modules/chats/chats";
 import { refundLeakedHolds } from "@/modules/credits/credits";
 import { getPendingWaitpointForRun } from "@/modules/waitpoints/waitpoints";
+import { emitWebhook } from "@/modules/webhooks/webhooks";
 
 export async function dispatchRun(run: AgentRun, traceId: string) {
   if (run.triggerRunId) {
@@ -48,6 +50,17 @@ export async function dispatchRun(run: AgentRun, traceId: string) {
     await db.agentRun.update({
       where: { id: run.id },
       data: { status: "failed", error: DISPATCH_FAILED_ERROR, finishedAt: new Date() },
+    });
+    await emitWebhook({
+      agentRunId: run.id,
+      event: "run.failed",
+      data: {
+        status: "failed",
+        toolName: null,
+        output: null,
+        creditUsed: 0,
+        finishedAt: new Date().toISOString(),
+      },
     });
     throw new AppError(DISPATCH_FAILED_ERROR.code, DISPATCH_FAILED_ERROR.message, DISPATCH_FAILED_ERROR.retryable);
   }
@@ -93,6 +106,17 @@ export async function cancelAgentRun(userId: string, chatId: string, runId: stri
     await refundLeakedHolds(run.id).catch((err) =>
       logger.error("refundLeakedHolds failed in cancelAgentRun", { runId: run.id, detail: String(err) })
     );
+    await emitWebhook({
+      agentRunId: run.id,
+      event: "run.canceled",
+      data: {
+        status: "cancelled",
+        toolName: null,
+        output: null,
+        creditUsed: Number(run.chargedCredits),
+        finishedAt: new Date().toISOString(),
+      },
+    });
   }
 
   return { runId: run.id, status: "cancelled" as const };
@@ -181,4 +205,28 @@ export async function recoverStaleRun(chatId: string): Promise<boolean> {
   );
 
   return true;
+}
+
+export async function getRun(userId: string, runId: string) {
+  const run = await db.agentRun.findFirst({
+    where: { id: runId, userId },
+  });
+
+  if (!run) {
+    throw new AppError("NOT_FOUND", "Run not found", false);
+  }
+
+  return {
+    id: run.id,
+    chatId: run.chatId,
+    status: run.status,
+    error: (run.error as SafeError | null) ?? null,
+    startedAt: run.startedAt ? run.startedAt.toISOString() : null,
+    finishedAt: run.finishedAt ? run.finishedAt.toISOString() : null,
+    createdAt: run.createdAt.toISOString(),
+    updatedAt: run.updatedAt.toISOString(),
+    chargedCredits: Number(run.chargedCredits),
+    routedModel: run.routedModel,
+    assistantMessageId: run.assistantMessageId,
+  };
 }

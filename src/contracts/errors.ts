@@ -11,6 +11,7 @@ export const ErrorCode = z.enum([
   "LLM_RATE_LIMITED",
   "LLM_UNAVAILABLE",
   "LLM_EMPTY_STREAM",
+  "VISION_UNAVAILABLE",
   "LLM_MALFORMED_TOOL_CALL",
   "MAX_TURNS",
   "MAGICA_UNAUTHORIZED",
@@ -40,6 +41,10 @@ export const SafeError = z.object({
 export type SafeError = z.infer<typeof SafeError>;
 
 export const ErrorResponse = z.object({
-  error: SafeError.extend({ traceId: z.string() }),
+  error: SafeError.extend({
+    traceId: z.string(),
+    retryAfterSeconds: z.number().optional(),
+  }),
+  retryAfterSeconds: z.number().optional(),
 });
 export type ErrorResponse = z.infer<typeof ErrorResponse>;

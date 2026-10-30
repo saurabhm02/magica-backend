@@ -348,7 +348,7 @@ describe("Credits System", { timeout: 60_000 }, () => {
       yield { type: "done", model: "test-model" };
     }
 
-    vi.spyOn(llmModule, "streamChat").mockImplementation(() => gen());
+    vi.spyOn(llmModule, "streamChatWithFallback").mockImplementation(() => gen());
     const metadataStates: unknown[] = [];
     vi.spyOn(metadata, "replace").mockImplementation((data) => {
       metadataStates.push(data);
@@ -533,7 +533,7 @@ describe("Credits System", { timeout: 60_000 }, () => {
     expect(await getUserCreditBalance(testUser.id)).toBe(20_980n);
 
     // Mock streamChat to simulate a crash during the turn
-    vi.spyOn(llmModule, "streamChat").mockImplementation(() => {
+    vi.spyOn(llmModule, "streamChatWithFallback").mockImplementation(() => {
       throw new Error("Simulated engine crash during run");
     });
     vi.spyOn(metadata, "replace").mockImplementation(() => {});

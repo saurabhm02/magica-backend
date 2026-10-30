@@ -9,6 +9,7 @@ export class AppError extends Error {
     public readonly code: ErrorCode,
     message: string,
     public readonly retryable = false,
+    public readonly retryAfterSeconds?: number,
   ) {
     super(message);
     this.name = "AppError";
@@ -39,8 +40,23 @@ export function errorResponse(error: unknown, traceId: string): NextResponse<Err
     });
   }
   const appError = error instanceof AppError ? error : new AppError("INTERNAL", GENERIC_SAFE_MESSAGE);
+  const retryAfterSeconds = appError.retryAfterSeconds;
   const body: ErrorResponse = {
-    error: { code: appError.code, message: appError.message, retryable: appError.retryable, traceId },
+    error: {
+      code: appError.code,
+      message: appError.message,
+      retryable: appError.retryable,
+      traceId,
+      ...(retryAfterSeconds !== undefined ? { retryAfterSeconds } : {}),
+    },
+    ...(retryAfterSeconds !== undefined ? { retryAfterSeconds } : {}),
   };
-  return NextResponse.json(body, { status: HTTP_STATUS_BY_ERROR_CODE[appError.code] ?? 500 });
+  const headers = new Headers();
+  if (retryAfterSeconds !== undefined) {
+    headers.set("Retry-After", String(retryAfterSeconds));
+  }
+  return NextResponse.json(body, {
+    status: HTTP_STATUS_BY_ERROR_CODE[appError.code] ?? 500,
+    headers,
+  });
 }

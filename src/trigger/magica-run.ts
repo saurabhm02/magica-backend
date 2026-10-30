@@ -26,6 +26,7 @@ export async function executeMagicaRun(
     signal?: AbortSignal;
     sleep?: (seconds: number) => Promise<void>;
     timeoutMs?: number;
+    processId?: string;
   },
 ): Promise<{ output: Record<string, unknown>; creditUsed?: number }> {
   const invocation = await db.toolInvocation.findUniqueOrThrow({
@@ -74,6 +75,7 @@ export async function executeMagicaRun(
         logger.warn("magica run failed with provider message", {
           runId: magicaRunId,
           userMessage: run.userMessage,
+          processId: options?.processId,
         });
       }
       throw new AppError("MAGICA_RUN_FAILED", SAFE_ERROR_MESSAGES.MAGICA_RUN_FAILED, false);
@@ -100,14 +102,22 @@ export const magicaRun = task<"magica-run", MagicaRunPayload, MagicaRunResult>({
       await finishToolInvocation(inv, { ok: false, error: toSafeError(error) });
     }
   },
-  run: async (payload: MagicaRunPayload, { signal }): Promise<MagicaRunResult> => {
+  run: async (payload: MagicaRunPayload, { signal, ctx }): Promise<MagicaRunResult> => {
+    logger.info("magica-run started", { toolInvocationId: payload.toolInvocationId, processId: ctx.run.id });
     try {
       const res = await executeMagicaRun(payload, {
         signal,
         sleep: (seconds) => wait.for({ seconds }),
+        processId: ctx.run.id,
       });
+      logger.info("magica-run finished", { toolInvocationId: payload.toolInvocationId, processId: ctx.run.id });
       return { ok: true, output: res.output, creditUsed: res.creditUsed };
     } catch (err) {
+      logger.error("magica-run failed", {
+        toolInvocationId: payload.toolInvocationId,
+        processId: ctx.run.id,
+        error: String(err),
+      });
       const error: SafeError =
         err instanceof AppError
           ? { code: err.code, message: err.message, retryable: err.retryable }

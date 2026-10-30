@@ -1,12 +1,13 @@
 import { inspect } from "node:util";
 import { runs } from "@trigger.dev/sdk";
 import { loadSkillsRegistry } from "@/agent/skills/registry";
-import { STARTUP_CHECK_TIMEOUT_MS } from "@/lib/constants";
+import { STARTUP_CHECK_TIMEOUT_MS, validateVisionModels } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 
 export async function checkConnections() {
   try {
+    validateVisionModels();
     await withTimeout(db.$queryRaw`SELECT 1`, "database");
     logger.info("database connected");
 

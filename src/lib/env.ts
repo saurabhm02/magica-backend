@@ -15,6 +15,9 @@ export const serverOnlyEnvSchema = z.object({
   CLERK_SECRET_KEY: z.string().min(1),
   TRIGGER_SECRET_KEY: z.string().min(1),
   CLIENT_ORIGIN: z.url(),
+  TRANSLOADIT_KEY: z.string().min(1),
+  TRANSLOADIT_SECRET: z.string().min(1),
+  TRANSLOADIT_S3_CREDENTIALS: z.string().optional(),
 });
 
 export const serverEnvSchema = taskEnvSchema.extend(serverOnlyEnvSchema.shape);
@@ -52,6 +55,18 @@ export const serverEnv = new Proxy({} as ServerEnv, {
   get(_target, prop: string | symbol) {
     return getServerEnv()[prop as keyof ServerEnv];
   },
+  set(_target, prop: string | symbol, value: unknown) {
+    if (typeof prop === "string") {
+      (getServerEnv() as unknown as Record<string, unknown>)[prop] = value;
+    }
+    return true;
+  },
+  deleteProperty(_target, prop: string | symbol) {
+    if (typeof prop === "string") {
+      delete (getServerEnv() as unknown as Record<string, unknown>)[prop];
+    }
+    return true;
+  },
 });
 
 export const env = new Proxy({} as ServerEnv, {
@@ -60,6 +75,18 @@ export const env = new Proxy({} as ServerEnv, {
       return taskEnv[prop as keyof TaskEnv];
     }
     return getServerEnv()[prop as keyof ServerEnv];
+  },
+  set(_target, prop: string | symbol, value: unknown) {
+    if (typeof prop === "string") {
+      (getServerEnv() as unknown as Record<string, unknown>)[prop] = value;
+    }
+    return true;
+  },
+  deleteProperty(_target, prop: string | symbol) {
+    if (typeof prop === "string") {
+      delete (getServerEnv() as unknown as Record<string, unknown>)[prop];
+    }
+    return true;
   },
   has(_target, prop: string | symbol) {
     if (typeof prop === "string" && prop in taskEnv) {

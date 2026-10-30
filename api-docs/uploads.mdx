@@ -1,0 +1,191 @@
+---
+title: "Uploads"
+description: "Upload and attach images, videos, and audio files to messages using Transloadit and S3."
+---
+
+Magica supports attaching user-uploaded files (images, videos, and audio) directly to messages. Uploads are handled client-side using [Uppy](https://uppy.io/) and [Transloadit](https://transloadit.com/), and stored either permanently in an S3-compatible bucket or temporarily for 24 hours.
+
+## Upload Flow
+
+The upload workflow consists of three steps:
+
+```text
+Browser (Uppy) ----> 1. POST /api/v1/uploads/params ----> Magica API (returns signed params)
+Browser (Uppy) ----> 2. Direct Upload                ----> Transloadit (processes & stores in S3)
+Browser (Uppy) ----> 3. POST /api/v1/uploads/complete  ----> Magica API (validates & creates Attachments)
+```
+
+### 1. Request Upload Parameters
+
+Before uploading, the client declares the files it intends to upload. Magica validates file count, size, and MIME types, then returns signed Transloadit Assembly parameters:
+
+```http
+POST /api/v1/uploads/params
+Content-Type: application/json
+Authorization: Bearer <token>
+
+{
+  "files": [
+    {
+      "name": "photo.png",
+      "size": 1048576,
+      "type": "image/png"
+    }
+  ]
+}
+```
+
+Response:
+
+```json
+{
+  "params": "{\"auth\":{\"key\":\"...\",\"expires\":\"2026/10/30 15:00:00+00:00\"},\"fields\":{\"userId\":\"usr_123\"},\"steps\":{...}}",
+  "signature": "sha384:abcdef..."
+}
+```
+
+The signature is computed as HMAC-SHA384 using the server's `TRANSLOADIT_SECRET`. The secret is never sent to the client.
+
+### 2. Client-Side Upload via Uppy
+
+Using `@uppy/core` and `@uppy/transloadit`, pass the parameters to the Transloadit plugin:
+
+```javascript
+import Uppy from "@uppy/core";
+import Transloadit from "@uppy/transloadit";
+
+const uppy = new Uppy();
+uppy.use(Transloadit, {
+  async getAssemblyOptions(file) {
+    const res = await fetch("/api/v1/uploads/params", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        files: [{ name: file.name, size: file.size, type: file.type }],
+      }),
+    });
+    const { params, signature } = await res.json();
+    return { params, signature };
+  },
+});
+```
+
+### 3. Complete Upload
+
+When the Transloadit Assembly finishes, the client submits the `assemblyId` to complete the upload:
+
+```http
+POST /api/v1/uploads/complete
+Content-Type: application/json
+Authorization: Bearer <token>
+
+{
+  "assemblyId": "7f0a9b8c1d2e3f4a5b6c7d8e9f0a1b2c"
+}
+```
+
+Magica fetches the completed Assembly from Transloadit, validates that:
+- The Assembly status is `ASSEMBLY_COMPLETED`.
+- `fields.userId` matches the authenticated user.
+- The actual MIME types and file sizes verified by Transloadit comply with limits.
+
+Response:
+
+```json
+{
+  "attachments": [
+    {
+      "id": "att_01h9x...",
+      "messageId": null,
+      "position": null,
+      "source": "upload",
+      "kind": "image",
+      "mimeType": "image/png",
+      "sizeBytes": 1048576,
+      "name": "photo.png",
+      "url": "https://magica20.s3.ap-south-1.amazonaws.com/uploads/usr_123/abc/photo.png",
+      "status": "ready",
+      "expiresAt": null,
+      "createdAt": "2026-10-30T09:00:00.000Z"
+    }
+  ]
+}
+```
+
+### 4. Attaching to a Message
+
+Include the returned attachment IDs when sending a chat message:
+
+```http
+POST /api/v1/chats/:chatId/messages
+Content-Type: application/json
+Authorization: Bearer <token>
+
+{
+  "content": "Please analyze this image.",
+  "clientRequestId": "req_unique_123",
+  "attachmentIds": ["att_01h9x..."]
+}
+```
+
+Attachments are bound atomically to the message in the order provided.
+
+---
+
+## Storage & Expiration
+
+- **Permanent S3 Storage**: When `TRANSLOADIT_S3_CREDENTIALS` is configured (e.g. `"magica20"`), files are stored directly in your S3 bucket under `uploads/${userId}/${unique_prefix}/${filename}` with `acl: "bucket-default"`. Stored attachments never expire (`expiresAt: null`).
+- **Temporary Fallback**: If S3 credentials are not configured, files are served from Transloadit's temporary storage and expire after 24 hours (`expiresAt` timestamp set). Expired files cannot be attached or reused.
+
+---
+
+## Limits
+
+| Limit | Value | Description |
+| :--- | :--- | :--- |
+| **Max files per message** | `10` | Enforced at parameter creation, upload completion, and message sending. |
+| **Max file size** | `500 MB` | Community plan per-file upload cap. |
+| **Allowed image types** | `image/png`, `image/jpeg`, `image/webp`, `image/gif` | SVGs (`image/svg+xml`) are blocked for security. |
+| **Allowed video types** | `video/mp4`, `video/quicktime`, `video/webm` | Videos can be processed by media tools. |
+| **Allowed audio types** | `audio/mpeg`, `audio/mp4`, `audio/wav`, `audio/ogg`, `audio/webm`, `audio/aac` | Audio formats for voice and sound processing. |
+
+---
+
+## Reusing Library Items
+
+Users can attach previously uploaded files or tool-generated media without re-uploading:
+
+```http
+POST /api/v1/attachments/from-library
+Content-Type: application/json
+Authorization: Bearer <token>
+
+{
+  "attachmentId": "att_01h9x..."
+}
+```
+
+Or for generated tool output:
+
+```json
+{
+  "toolInvocationId": "inv_123",
+  "url": "https://example.com/generated_art.png"
+}
+```
+
+This creates a new `Attachment` row with `source: "library"`, preserving the original metadata while linking it to a new message.
+
+---
+
+## Error Codes
+
+| Code | HTTP Status | Description |
+| :--- | :--- | :--- |
+| `UPLOAD_TOO_LARGE` | 400 | A file exceeds the 500 MB limit. |
+| `UPLOAD_TYPE_NOT_ALLOWED` | 400 | The file MIME type is not allowed. |
+| `UPLOAD_QUOTA_EXCEEDED` | 402 | Transloadit credit or slot quota has been exceeded. |
+| `RATE_LIMITED` | 429 | Transloadit rate limit reached. |
+| `VALIDATION_FAILED` | 400 | Invalid payload, non-32-hex assembly ID, or >10 files. |
+| `UNAUTHORIZED` | 401 | Upload belongs to a different user. |
+| `NOT_FOUND` | 404 | Attachment or tool invocation not found, or attachment has expired. |

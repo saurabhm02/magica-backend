@@ -1,5 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { streamChat } from "@/agent/llm";
+import { isFreeModel, streamChat, streamChatWithFallback } from "@/agent/llm";
+import { VISION_MODELS } from "@/lib/constants";
 
 function chunk(body: Record<string, unknown>) {
   return `data: ${JSON.stringify({ id: "x", object: "chat.completion.chunk", created: 1, ...body })}\n\n`;
@@ -162,4 +163,72 @@ test("the model's reasoning streams as reasoning-delta, before the reply text", 
     { type: "reasoning-delta", text: "The user wants..." },
     { type: "text-delta", text: "Hi" },
   ]);
+});
+
+async function collectWithFallback(models: string[]) {
+  const events = [];
+  for await (const event of streamChatWithFallback(models, [{ role: "user", content: "hi" }], new AbortController().signal)) {
+    events.push(event);
+  }
+  return events;
+}
+
+// Answers per model name: "down:free" fails before replying, "flaky:free" fails after one word, anything else replies.
+function stubModels() {
+  const fetchSpy = vi.fn().mockImplementation(async (_url: string, init: { body: string }) => {
+    const { model } = JSON.parse(init.body) as { model: string };
+    if (model === "down:free") return new Response(JSON.stringify({ error: { message: "busy" } }), { status: 400 });
+    const lines = [chunk({ model, choices: [{ index: 0, delta: { content: "Hi" }, finish_reason: null }] })];
+    if (model === "flaky:free") lines.push("data: {\"error\":{\"message\":\"upstream\"}}\n\n");
+    else lines.push(chunk({ model, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] }), "data: [DONE]\n\n");
+    return new Response(sseStream(lines), { status: 200 });
+  });
+  vi.stubGlobal("fetch", fetchSpy);
+  return fetchSpy;
+}
+
+test("a model that fails before replying is skipped and the next one answers", async () => {
+  const fetchSpy = stubModels();
+  const events = await collectWithFallback(["down:free", "vision-b:free"]);
+  expect(fetchSpy).toHaveBeenCalledTimes(2);
+  expect(events).toEqual([{ type: "text-delta", text: "Hi" }, { type: "done", model: "vision-b:free" }]);
+});
+
+test("a model that already started replying is not swapped out", async () => {
+  stubModels();
+  const events = await collectWithFallback(["flaky:free", "vision-b:free"]);
+  expect(events[0]).toEqual({ type: "text-delta", text: "Hi" });
+  expect(events.at(-1)).toMatchObject({ type: "error" });
+  expect(events.some((e) => e.type === "done")).toBe(false);
+});
+
+test("when every model fails, the last error is passed on", async () => {
+  stubModels();
+  const events = await collectWithFallback(["down:free", "down:free"]);
+  expect(events).toEqual([expect.objectContaining({ type: "error" })]);
+});
+
+test("every vision model is a free model", () => {
+  expect(VISION_MODELS.length).toBeGreaterThan(0);
+  for (const model of VISION_MODELS) expect(model).toMatch(/:free$/);
+});
+
+test("a paid model is refused before any request is sent", async () => {
+  const fetchSpy = vi.fn();
+  vi.stubGlobal("fetch", fetchSpy);
+
+  const events = [];
+  for await (const event of streamChat([{ role: "user", content: "hi" }], new AbortController().signal, undefined, "openai/gpt-5")) {
+    events.push(event);
+  }
+
+  expect(fetchSpy).not.toHaveBeenCalled();
+  expect(events).toEqual([expect.objectContaining({ type: "error", code: "LLM_UNAVAILABLE" })]);
+});
+
+test("only free model ids count as free", () => {
+  expect(isFreeModel("openrouter/free")).toBe(true);
+  expect(isFreeModel("google/gemma-4-31b-it:free")).toBe(true);
+  expect(isFreeModel("openai/gpt-5")).toBe(false);
+  expect(isFreeModel("google/gemma-4-31b-it")).toBe(false);
 });
