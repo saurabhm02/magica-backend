@@ -3,10 +3,10 @@ import { SafeError } from "./errors";
 
 export const CropImageInput = z.object({
   image_url: z.string().url().meta({ title: "Input Image" }).describe("Public URL of the image to crop"),
-  x_percent: z.number().min(0).max(100).meta({ title: "X Position (%)", default: 0 }).optional().describe("Horizontal start position (0-100%)"),
-  y_percent: z.number().min(0).max(100).meta({ title: "Y Position (%)", default: 0 }).optional().describe("Vertical start position (0-100%)"),
-  width_percent: z.number().min(0).max(100).meta({ title: "Width (%)", default: 100 }).optional().describe("Crop width (0-100%)"),
-  height_percent: z.number().min(0).max(100).meta({ title: "Height (%)", default: 100 }).optional().describe("Crop height (0-100%)"),
+  x_percent: z.number().min(0).max(100).meta({ title: "X Position (%)", default: 0 }).optional().describe("Horizontal crop start position (percentage from left)"),
+  y_percent: z.number().min(0).max(100).meta({ title: "Y Position (%)", default: 0 }).optional().describe("Vertical crop start position (percentage from top)"),
+  width_percent: z.number().min(0).max(100).meta({ title: "Width (%)", default: 100 }).optional().describe("Crop width as a percentage of the original image"),
+  height_percent: z.number().min(0).max(100).meta({ title: "Height (%)", default: 100 }).optional().describe("Crop height as a percentage of the original image"),
   x_px: z.number().int().nonnegative().optional().describe("Exact horizontal start position in pixels"),
   y_px: z.number().int().nonnegative().optional().describe("Exact vertical start position in pixels"),
   width_px: z.number().int().positive().optional().describe("Exact crop width in pixels"),
@@ -66,7 +66,7 @@ export const GptImage2Output = z
 export type GptImage2Output = z.infer<typeof GptImage2Output>;
 
 export const MergeVideosInput = z.object({
-  video_urls: z.array(z.string().url()).min(2).max(100).meta({ title: "Videos" }).describe("2 to 100 ordered video URLs to concatenate"),
+  video_urls: z.array(z.string().url()).min(2).max(100).meta({ title: "Videos" }).describe("Upload 2–100 videos to concatenate (in order)."),
   transition: z.enum(["none", "fade", "dissolve"]).meta({ title: "Transition" }).optional().default("none").describe("Transition effect between videos"),
 });
 export type MergeVideosInput = z.infer<typeof MergeVideosInput>;

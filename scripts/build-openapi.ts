@@ -89,6 +89,10 @@ export function generateOpenApiSpec(): Record<string, unknown> {
     },
     servers: [
       {
+        url: "https://magica-server.vercel.app/api/v1",
+        description: "Production",
+      },
+      {
         url: "http://localhost:4000/api/v1",
         description: "Local development server",
       },

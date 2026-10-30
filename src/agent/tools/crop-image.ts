@@ -28,7 +28,7 @@ export function buildCropImageParams(input: CropImageInput): Record<string, unkn
 }
 
 export const CROP_IMAGE_PRICING_LINES = [
-  "Fixed: 5,000 microcredits per crop (0.005M)",
+  "0.005M credits per image",
 ];
 
 export async function estimateCropImageCredits(input?: Partial<CropImageInput>): Promise<number> {
@@ -42,6 +42,7 @@ export async function estimateCropImageCredits(input?: Partial<CropImageInput>):
 export const cropImageTool: MagicaTool<CropImageInput, CropImageOutput> = {
   name: "crop_image",
   displayName: "Crop Image",
+  tagline: "Crop an image to the dimensions you choose.",
   description:
     "Crop an image using percentage coordinates (x_percent, y_percent, width_percent, height_percent), exact pixel dimensions (width_px, height_px, optional x_px, y_px), or pixel bounding box (crop.{x,y,width,height}).",
   category: "image",

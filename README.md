@@ -66,7 +66,8 @@ pnpm db:generate    # generate Prisma client
 See [`docs/MIGRATIONS.md`](docs/MIGRATIONS.md) for full migration history, rollback SQL, and zero-downtime safety notes.
 
 **Test login**
-- Test account: `test@example.com` / `Password123!` (or sign in via Clerk dev credentials).
+- Live app: https://magica-frontend-six.vercel.app
+- A reviewer account (email + password) is shared with the submission, not stored in this public repo. You can also sign in with Google or GitHub.
 
 **4. Run**
 ```bash
@@ -144,11 +145,11 @@ Only decisions that are already in the code. This table grows as features are bu
 | Foreign keys with `ON DELETE RESTRICT`, soft delete planned via `deletedAt` | Nothing gets deleted by accident; history like runs is never lost | Delete logic (coming with chat management) must filter `deletedAt: null` |
 
 ---
-
 ## What I'd improve with more time
 
-- **Favorites and folders:** Let users organize chats and media assets into collections, folders, and tagged favorites.
-- **Chat completions endpoint:** Add an OpenAI-compatible `/v1/chat/completions` proxy endpoint for direct integration with external developer tools.
-- **MCP server integration:** Implement Model Context Protocol (MCP) server support so agents can dynamically attach external tools, databases, and custom sidecars.
-- **Image model routing beyond free tiers:** Dynamic routing to premium models (e.g., Midjourney, Flux Pro) when user credit balances allow.
-- **High-concurrency load testing:** Formal benchmarking and load testing simulating 1,000 concurrent agent turns under high database and network load.
+- **Favorites and folders:** let users favorite chats and media and organize them into folders. The Favorites tab and "My folders" are in the UI but not wired up yet.
+- **MCP server:** expose the agent and the three Magica tools as an MCP server, so tools like Claude Desktop or Cursor can start chats and run tools through the same API, credits and auth.
+- **SSH chat client:** chat with the agent from a terminal over SSH (`ssh chat.<domain>`), streaming replies and tool progress live, built on the public API and the same realtime streams as the web app.
+- **Chat-style completions endpoint:** an OpenAI-compatible `/v1/chat/completions` route on top of agent runs, the one bonus API route not built yet.
+- **Smarter free-model routing:** track which free vision models are up and send image turns to a healthy one first, instead of trying them in a fixed order.
+- **Load testing at scale:** benchmark 1,000 concurrent agent turns (database connections, Trigger.dev queues, realtime fan-out) and tune limits from the results.

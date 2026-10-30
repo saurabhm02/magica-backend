@@ -55,11 +55,7 @@ describe("Environment schema splitting", () => {
       "CLIENT_ORIGIN",
       "TRANSLOADIT_KEY",
       "TRANSLOADIT_SECRET",
-      "S3_BUCKET",
-      "S3_KEY",
-      "S3_SECRET",
-      "S3_REGION",
-      "S3_ENDPOINT",
+      "TRANSLOADIT_S3_CREDENTIALS",
     ]);
   });
 });

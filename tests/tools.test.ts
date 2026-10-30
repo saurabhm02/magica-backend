@@ -733,7 +733,7 @@ describe("GET /v1/tools/:name", () => {
       description: expect.any(String),
       category: "image",
       inputs: expect.any(Object),
-      pricingLines: expect.arrayContaining(["Quality High + Size 1024x1024: 0.273936M"]),
+      pricingLines: expect.arrayContaining(["Quality High + Size 1024x1024: 0.273936M credits"]),
       defaultEstimate: expect.any(Number),
     });
     expect(data.inputs.properties).toHaveProperty("prompt");

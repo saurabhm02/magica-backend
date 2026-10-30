@@ -51,7 +51,7 @@ Add up the amounts and you get the balance, so you can always check where it com
 ## Check your balance
 
 ```bash
-curl http://localhost:4000/api/v1/me/credits \
+curl https://magica-server.vercel.app/api/v1/me/credits \
   -H "Authorization: Bearer YOUR_CLERK_TOKEN"
 ```
 
@@ -65,7 +65,7 @@ Newest first, with a cursor for the next page (see
 [Pagination](/concepts/pagination-and-idempotency)).
 
 ```bash
-curl "http://localhost:4000/api/v1/me/credits/ledger?limit=10" \
+curl "https://magica-server.vercel.app/api/v1/me/credits/ledger?limit=10" \
   -H "Authorization: Bearer YOUR_CLERK_TOKEN"
 ```
 

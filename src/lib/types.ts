@@ -44,7 +44,8 @@ export type ToolDisplayInfo = {
 export type LocalTool<TInput = any, TOutput = any> = {
   name: string;
   displayName: string;
-  description: string;
+  description: string; // for the model: what the tool does and how to call it
+  tagline?: string; // for people: the short line on the Tools page
   category: ToolCategory;
   hidden?: boolean;
   pricingLines?: string[];
@@ -60,7 +61,8 @@ export type LocalTool<TInput = any, TOutput = any> = {
 export type MagicaTool<TInput = any, TOutput = any> = {
   name: string;
   displayName: string;
-  description: string;
+  description: string; // for the model: what the tool does and how to call it
+  tagline?: string; // for people: the short line on the Tools page
   category: ToolCategory;
   hidden?: boolean;
   pricingLines?: string[];

@@ -8,6 +8,8 @@ const { trigger, createPublicToken } = vi.hoisted(() => ({ trigger: vi.fn(), cre
 vi.mock("@trigger.dev/sdk", () => ({
   tasks: { trigger },
   auth: { createPublicToken },
+  task: (definition: unknown) => definition,
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
 let userId: string;

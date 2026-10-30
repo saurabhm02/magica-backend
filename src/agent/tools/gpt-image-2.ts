@@ -41,11 +41,27 @@ export function buildGptImage2Payload(input: GptImage2Input): {
 }
 
 export const GPT_IMAGE_2_PRICING_LINES = [
-  "Quality High + Size 1024x1024: 0.273936M",
-  "Quality Medium + Size 1024x1024: 0.068484M",
-  "Quality Low + Size 1024x1024: 0.007644M",
-  "Quality High + Size 2048x2048: 0.556608M",
-  "Quality Medium + Size 2048x2048: 0.139152M",
+  "Quality High + Size 1024x1024: 0.273936M credits",
+  "Quality High + Size 1536x1024: 0.214032M credits",
+  "Quality High + Size 1024x1536: 0.214032M credits",
+  "Quality High + Size 2048x2048: 0.556608M credits",
+  "Quality High + Size 2048x1152: 0.22035M credits",
+  "Quality High + Size 3840x2160: 0.520338M credits",
+  "Quality High + Size 2160x3840: 0.520338M credits",
+  "Quality Medium + Size 1024x1024: 0.068484M credits",
+  "Quality Medium + Size 1536x1024: 0.053508M credits",
+  "Quality Medium + Size 1024x1536: 0.053508M credits",
+  "Quality Medium + Size 2048x2048: 0.139152M credits",
+  "Quality Medium + Size 2048x1152: 0.055107M credits",
+  "Quality Medium + Size 3840x2160: 0.130104M credits",
+  "Quality Medium + Size 2160x3840: 0.130104M credits",
+  "Quality Low + Size 1024x1024: 0.007644M credits",
+  "Quality Low + Size 1536x1024: 0.006162M credits",
+  "Quality Low + Size 1024x1536: 0.006162M credits",
+  "Quality Low + Size 2048x2048: 0.015483M credits",
+  "Quality Low + Size 2048x1152: 0.006123M credits",
+  "Quality Low + Size 3840x2160: 0.014469M credits",
+  "Quality Low + Size 2160x3840: 0.014469M credits",
 ];
 
 export async function estimateGptImage2Credits(input?: Partial<GptImage2Input>): Promise<number> {
@@ -69,6 +85,7 @@ export async function estimateGptImage2Credits(input?: Partial<GptImage2Input>):
 export const gptImage2Tool: MagicaTool<GptImage2Input, GptImage2Output> = {
   name: "gpt_image_2",
   displayName: "GPT Image 2",
+  tagline: "OpenAI's newest image model with any-resolution support and improved quality.",
   description:
     "Generate a new image from a text prompt or edit an existing image using OpenAI's GPT Image 2 model. Default quality is Medium (use High only when user asks for high/best quality), default size is 1024x1024, default n is 1. To edit, provide uploadedImages.",
   category: "image",

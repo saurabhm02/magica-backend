@@ -51,7 +51,7 @@ If you attempt to send a new message while a run is active, the API returns a `4
 Users can cancel an in-flight run at any time by calling `POST /chats/:chatId/runs/:runId/cancel`:
 
 ```bash
-curl -X POST http://localhost:4000/api/v1/chats/cmvtu12340000abcde/runs/run_123456789/cancel \
+curl -X POST https://magica-server.vercel.app/api/v1/chats/cmvtu12340000abcde/runs/run_123456789/cancel \
   -H "Authorization: Bearer YOUR_CLERK_TOKEN"
 ```
 
@@ -71,7 +71,7 @@ Cancelling immediately stops agent processing, marks in-progress tool steps as c
 When a user refreshes the page or reopens an existing chat, call `GET /chats/:chatId/active-run` to detect whether an execution is still going:
 
 ```bash
-curl -X GET http://localhost:4000/api/v1/chats/cmvtu12340000abcde/active-run \
+curl -X GET https://magica-server.vercel.app/api/v1/chats/cmvtu12340000abcde/active-run \
   -H "Authorization: Bearer YOUR_CLERK_TOKEN"
 ```
 

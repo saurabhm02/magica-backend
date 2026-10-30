@@ -9,14 +9,14 @@ You can ask the agent to create media from natural language, inspect step-by-ste
 
 ## Base URL
 
-During local development, all endpoints live at:
+All endpoints live at:
 
 ```http
-http://localhost:4000/api/v1
+https://magica-server.vercel.app/api/v1
 ```
 
 <Note>
-  When deployed to production, this base URL will change to your deployed domain (for example, `https://api.magica.ai/api/v1`). Keep the base URL configurable in your client code.
+  Running the backend locally? Use `http://localhost:4000/api/v1` instead. Keep the base URL configurable in your client code.
 </Note>
 
 ## Authentication
@@ -32,7 +32,7 @@ Authorization: Bearer <clerk_session_token>
 Here is a quick check to verify your token:
 
 ```bash
-curl -X GET http://localhost:4000/api/v1/me \
+curl -X GET https://magica-server.vercel.app/api/v1/me \
   -H "Authorization: Bearer YOUR_CLERK_TOKEN"
 ```
 

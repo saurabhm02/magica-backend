@@ -48,7 +48,7 @@ export async function listPublicTools() {
     tools.map(async (tool) => ({
       name: tool.name,
       displayName: tool.displayName,
-      description: tool.description,
+      description: tool.tagline ?? tool.description,
       category: tool.category,
       estimatedCredits: await tool.estimateCredits({}),
     })),

@@ -22,7 +22,7 @@ export const GET = route<{ params: Promise<{ name: string }> }>(async (req, { pa
     ToolDetailResponse.parse({
       name: tool.name,
       displayName: tool.displayName,
-      description: tool.description,
+      description: tool.tagline ?? tool.description,
       category: tool.category,
       inputs,
       pricingLines: tool.pricingLines ?? [],

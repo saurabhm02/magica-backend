@@ -10,7 +10,7 @@ Follow this step-by-step guide to create a chat, send a message to the agent, st
 A chat is a container for messages and runs. Create one with `POST /chats`:
 
 ```bash
-curl -X POST http://localhost:4000/api/v1/chats \
+curl -X POST https://magica-server.vercel.app/api/v1/chats \
   -H "Authorization: Bearer YOUR_CLERK_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -37,7 +37,7 @@ Save the `id` from the response. We refer to it as `CHAT_ID` below.
 Send your prompt to `POST /chats/:chatId/messages`. Always include a unique `clientRequestId` for safe retries:
 
 ```bash
-curl -X POST http://localhost:4000/api/v1/chats/cmvtu12340000abcde/messages \
+curl -X POST https://magica-server.vercel.app/api/v1/chats/cmvtu12340000abcde/messages \
   -H "Authorization: Bearer YOUR_CLERK_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -107,7 +107,7 @@ export function AgentReply({ realtime }: { realtime: { runId: string; accessToke
 After the run finishes, or when a user reloads the page, fetch the full conversation history from `GET /chats/:chatId/messages`:
 
 ```bash
-curl -X GET "http://localhost:4000/api/v1/chats/cmvtu12340000abcde/messages?limit=10" \
+curl -X GET "https://magica-server.vercel.app/api/v1/chats/cmvtu12340000abcde/messages?limit=10" \
   -H "Authorization: Bearer YOUR_CLERK_TOKEN"
 ```
 

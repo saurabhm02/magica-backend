@@ -12,6 +12,22 @@ export const ALLOWED_ATTACHMENT_MIME_TYPES = [
   "image/avif",
   "image/heic",
   "image/heif",
+  "video/mp4",
+  "video/quicktime",
+  "video/webm",
+  "video/x-msvideo",
+  "video/mpeg",
+  "audio/mpeg",
+  "audio/mp3",
+  "audio/wav",
+  "audio/wave",
+  "audio/x-wav",
+  "audio/webm",
+  "audio/ogg",
+  "audio/aac",
+  "audio/m4a",
+  "audio/x-m4a",
+  "audio/flac",
 ] as const;
 
 export const AttachmentSource = z.enum(["upload", "library"]);

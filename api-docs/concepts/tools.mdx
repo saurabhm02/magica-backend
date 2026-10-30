@@ -107,7 +107,7 @@ If you want to use Magica's media tools as a programmatic API without conversati
 Call `POST /tools/:name/runs`:
 
 ```bash
-curl -X POST http://localhost:4000/api/v1/tools/crop_image/runs \
+curl -X POST https://magica-server.vercel.app/api/v1/tools/crop_image/runs \
   -H "Authorization: Bearer YOUR_CLERK_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -140,7 +140,7 @@ Like chat messages, direct tool runs return immediately with a `realtime` token 
 To poll or reload an existing direct run, call `GET /tool-runs/:id`:
 
 ```bash
-curl -X GET http://localhost:4000/api/v1/tool-runs/inv_cuid998877 \
+curl -X GET https://magica-server.vercel.app/api/v1/tool-runs/inv_cuid998877 \
   -H "Authorization: Bearer YOUR_CLERK_TOKEN"
 ```
 
@@ -172,6 +172,6 @@ Response:
 View past direct runs for a tool with `GET /tools/:name/runs?limit=20`:
 
 ```bash
-curl -X GET "http://localhost:4000/api/v1/tools/crop_image/runs?limit=20" \
+curl -X GET "https://magica-server.vercel.app/api/v1/tools/crop_image/runs?limit=20" \
   -H "Authorization: Bearer YOUR_CLERK_TOKEN"
 ```

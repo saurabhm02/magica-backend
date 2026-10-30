@@ -11,8 +11,8 @@ export function buildMergeVideosParams(input: MergeVideosInput): Record<string, 
 }
 
 export const MERGE_VIDEOS_PRICING_LINES = [
-  "Base: 40,000 microcredits (0.04M) per billable minute",
-  "Additional videos: 10,000 microcredits (0.01M) per video",
+  "0.04M credits per minute",
+  "+0.01M credits per additional video per minute",
 ];
 
 export async function estimateMergeVideosCredits(input?: Partial<MergeVideosInput>): Promise<number> {
@@ -30,6 +30,7 @@ export async function estimateMergeVideosCredits(input?: Partial<MergeVideosInpu
 export const mergeVideosTool: MagicaTool<MergeVideosInput, MergeVideosOutput> = {
   name: "merge_videos",
   displayName: "Merge Videos",
+  tagline: "Combine multiple videos into one.",
   description: "Combine 2 to 100 ordered videos into a single video with optional transition (none, fade, dissolve).",
   category: "video",
   pricingLines: MERGE_VIDEOS_PRICING_LINES,
