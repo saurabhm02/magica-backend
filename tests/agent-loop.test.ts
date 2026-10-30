@@ -13,7 +13,7 @@ import { db } from "@/lib/db";
 import type { LlmEvent, LlmMessage, ToolCall } from "@/lib/types";
 import { createChat } from "@/modules/chats/chats";
 import { sendMessage } from "@/modules/messages/messages";
-import { reasoningStream, runAgentTurn, textStream } from "@/trigger/agent-turn";
+import { buildPrompt, reasoningStream, runAgentTurn, textStream } from "@/trigger/agent-turn";
 import { executeMagicaRun, magicaRun } from "@/trigger/magica-run";
 
 const baseUrl = process.env.MAGICA_BASE_URL?.replace(/\/$/, "") || "https://inference.magica.com";
@@ -195,6 +195,31 @@ describe("Agent turn loop with chained tools", () => {
     const run = await db.agentRun.findUniqueOrThrow({ where: { id: sent.run.id } });
     expect(run.status).toBe("failed");
     expect(run.error).toMatchObject({ code: "VISION_UNAVAILABLE", message: SAFE_ERROR_MESSAGES.VISION_UNAVAILABLE });
+  });
+
+  it("sends past replies as text only and lists earlier media separately, so the model can't copy fake result lines", async () => {
+    const chat = await createChat(userId);
+    await db.message.create({ data: { chatId: chat.id, role: "user", status: "complete", content: [{ type: "text", text: "make a logo" }] } });
+    await db.message.create({
+      data: {
+        chatId: chat.id,
+        role: "assistant",
+        status: "complete",
+        content: [
+          { type: "tool_use", id: "t1", name: "gpt_image_2", input: { prompt: "logo" } },
+          { type: "tool_result", toolUseId: "t1", output: {}, assets: [{ type: "image", url: "https://cdn.example.com/logo.png" }] },
+          { type: "text", text: "Here is your logo." },
+        ],
+      },
+    });
+    const next = await db.message.create({ data: { chatId: chat.id, role: "user", status: "complete", content: [{ type: "text", text: "crop it" }] } });
+
+    const prompt = await buildPrompt(chat.id, next.id);
+
+    const reply = prompt.find((m) => m.role === "assistant");
+    expect(reply?.content).toBe("Here is your logo.");
+    expect(String(prompt[0]?.content)).toContain("# Media made earlier in this chat");
+    expect(String(prompt[0]?.content)).toContain("- gpt_image_2: https://cdn.example.com/logo.png");
   });
 
   it("chains gpt_image_2 -> crop_image -> text answer with correct message formats and block ordering", async () => {

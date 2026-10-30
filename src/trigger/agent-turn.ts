@@ -621,13 +621,18 @@ export async function buildPrompt(chatId: string, userMessageId: string, planMod
   });
 
   const history: LlmMessage[] = [];
+  const earlierMedia: string[] = [];
   for (const m of latest.reverse()) {
-    const text = withAttachedLine(textOf(m.content), m.attachments);
-    if (!text.trim()) continue;
     if (m.role === "assistant") {
-      history.push({ role: "assistant", content: text });
+      // Replies go back as their text only. Writing tool results into the model's own past
+      // replies taught weak models to type fake "[tool result: url]" lines instead of calling tools.
+      earlierMedia.push(...mediaLinesOf(m.content));
+      const reply = replyTextOf(m.content);
+      if (reply.trim()) history.push({ role: "assistant", content: reply });
       continue;
     }
+    const text = withAttachedLine(textOf(m.content), m.attachments);
+    if (!text.trim()) continue;
     // Only the message being answered carries the images themselves; older ones keep just the
     // links, so a long chat doesn't resend every image on every turn.
     const images = m.id === userMessageId ? await toImageParts(m.attachments) : [];
@@ -643,6 +648,9 @@ export async function buildPrompt(chatId: string, userMessageId: string, planMod
       "\n\n# Plan Mode\nResearch first (check models and prices), then call the submit_plan tool with the steps. " +
       "Never write the plan as plain text: the user approves it in the plan card that submit_plan shows. " +
       "Paid tools become available only after the plan is approved.";
+  }
+  if (earlierMedia.length > 0) {
+    systemContent += `\n\n# Media made earlier in this chat\nUse these exact URLs when the user refers to them:\n${earlierMedia.join("\n")}`;
   }
   return [{ role: "system", content: systemContent }, ...history];
 }
@@ -794,6 +802,31 @@ async function finalizeRun({
 
   await db.$transaction(updates, { timeout: 30_000, maxWait: 15_000 });
   return { chargedCredits: Number(chargedCredits) };
+}
+
+// The text the assistant actually wrote, without tool calls or results.
+function replyTextOf(content: unknown): string {
+  if (!Array.isArray(content)) return "";
+  return content
+    .filter((block) => block?.type === "text" && typeof block.text === "string")
+    .map((block) => block.text as string)
+    .join("\n");
+}
+
+// One "- tool: url" line per media file a tool made, for the "media made earlier" list.
+function mediaLinesOf(content: unknown): string[] {
+  if (!Array.isArray(content)) return [];
+  const toolNames = new Map<string, string>();
+  const lines: string[] = [];
+  for (const block of content) {
+    if (block?.type === "tool_use") toolNames.set(block.id, block.name);
+    if (block?.type === "tool_result" && Array.isArray(block.assets)) {
+      for (const asset of block.assets as Array<{ url: string }>) {
+        lines.push(`- ${toolNames.get(block.toolUseId) ?? "tool"}: ${asset.url}`);
+      }
+    }
+  }
+  return lines;
 }
 
 function textOf(content: unknown): string {
