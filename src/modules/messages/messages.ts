@@ -5,6 +5,7 @@ import type { Message } from "@/contracts/message";
 import type { SendMessageRequest } from "@/contracts/api";
 import { getOwnedChat } from "@/modules/chats/chats";
 import { recoverStaleRun } from "@/modules/runs/runs";
+import { respondWaitpoint } from "@/modules/waitpoints/waitpoints";
 import { db } from "@/lib/db";
 import { afterCreatedAtIdCursor, CreatedAtIdCursor, decodeCursor, encodeCursor } from "@/lib/cursor";
 import { CHAT_TITLE_MAX_CHARS, DEFAULT_CHAT_TITLE } from "@/lib/constants";
@@ -45,6 +46,37 @@ export async function sendMessage(userId: string, chatId: string, body: SendMess
   ]);
   if (existing) return existing;
 
+  const pendingPlanWaitpoint = await db.waitpoint.findFirst({
+    where: {
+      run: { chatId, status: "waiting" },
+      type: "plan",
+      status: "pending",
+    },
+    include: { run: true },
+  });
+
+  if (pendingPlanWaitpoint) {
+    const message = await db.message.create({
+      data: {
+        chatId,
+        role: "user",
+        status: "complete",
+        content: [{ type: "text", text: body.content }],
+        searchText: body.content.trim(),
+        clientRequestId: body.clientRequestId,
+      },
+    });
+
+    await respondWaitpoint({
+      userId,
+      chatId,
+      waitpointId: pendingPlanWaitpoint.id,
+      body: { request_changes: body.content },
+    });
+
+    return { message, run: pendingPlanWaitpoint.run };
+  }
+
   const title = chat.title === DEFAULT_CHAT_TITLE ? deriveTitle(body.content) : undefined;
 
   const createMessageAndRun = () =>
@@ -60,7 +92,14 @@ export async function sendMessage(userId: string, chatId: string, body: SendMess
         },
       });
       const run = await tx.agentRun.create({
-        data: { chatId, userId, userMessageId: message.id, status: "queued", idempotencyKey: body.clientRequestId },
+        data: {
+          chatId,
+          userId,
+          userMessageId: message.id,
+          status: "queued",
+          idempotencyKey: body.clientRequestId,
+          planMode: body.planMode ?? false,
+        },
       });
       await tx.chat.update({ where: { id: chatId }, data: { updatedAt: new Date(), ...(title && { title }) } });
       return { message, run };
@@ -98,7 +137,7 @@ async function findSentMessage(chatId: string, clientRequestId: string) {
   return { message, run };
 }
 
-function deriveTitle(content: string) {
+export function deriveTitle(content: string) {
   return content.replace(/\s+/g, " ").trim().slice(0, CHAT_TITLE_MAX_CHARS);
 }
 
@@ -110,6 +149,7 @@ export function toMessageDTO(message: PrismaMessage): Message {
     status: message.status,
     content: z.array(ContentBlock).parse(message.content),
     clientRequestId: message.clientRequestId,
+    suggestion: message.suggestion ?? undefined,
     createdAt: message.createdAt.toISOString(),
     updatedAt: message.updatedAt.toISOString(),
   };

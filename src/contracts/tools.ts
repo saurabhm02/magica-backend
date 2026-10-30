@@ -2,11 +2,11 @@ import { z } from "zod";
 import { SafeError } from "./errors";
 
 export const CropImageInput = z.object({
-  image_url: z.string().url().describe("Public URL of the image to crop"),
-  x_percent: z.number().min(0).max(100).meta({ default: 0 }).optional().describe("Horizontal start position (0-100%)"),
-  y_percent: z.number().min(0).max(100).meta({ default: 0 }).optional().describe("Vertical start position (0-100%)"),
-  width_percent: z.number().min(0).max(100).meta({ default: 100 }).optional().describe("Crop width (0-100%)"),
-  height_percent: z.number().min(0).max(100).meta({ default: 100 }).optional().describe("Crop height (0-100%)"),
+  image_url: z.string().url().meta({ title: "Input Image" }).describe("Public URL of the image to crop"),
+  x_percent: z.number().min(0).max(100).meta({ title: "X Position (%)", default: 0 }).optional().describe("Horizontal start position (0-100%)"),
+  y_percent: z.number().min(0).max(100).meta({ title: "Y Position (%)", default: 0 }).optional().describe("Vertical start position (0-100%)"),
+  width_percent: z.number().min(0).max(100).meta({ title: "Width (%)", default: 100 }).optional().describe("Crop width (0-100%)"),
+  height_percent: z.number().min(0).max(100).meta({ title: "Height (%)", default: 100 }).optional().describe("Crop height (0-100%)"),
   x_px: z.number().int().nonnegative().optional().describe("Exact horizontal start position in pixels"),
   y_px: z.number().int().nonnegative().optional().describe("Exact vertical start position in pixels"),
   width_px: z.number().int().positive().optional().describe("Exact crop width in pixels"),
@@ -41,14 +41,14 @@ export const GPT_IMAGE_2_SIZES = [
 export type GptImage2Size = (typeof GPT_IMAGE_2_SIZES)[number];
 
 export const GptImage2Input = z.object({
-  prompt: z.string().min(1).max(4000).describe("Text prompt describing the image to generate or edit"),
+  prompt: z.string().min(1).max(4000).meta({ title: "Prompt" }).describe("Text prompt describing the image to generate or edit"),
   mode: z.enum(["text", "edit"]).optional().describe("Generation mode: text for new images, edit when modifying existing images"),
   uploadedImages: z.array(z.string().url()).max(10).optional().describe("Source image URLs to edit (max 10)"),
-  size: z.enum(GPT_IMAGE_2_SIZES).optional().default("1024x1024").describe("Output image size preset (default: 1024x1024)"),
-  quality: z.enum(["High", "Medium", "Low"]).optional().default("Medium").describe("Rendering quality level (default: Medium, use High only when requested)"),
-  background: z.enum(["Auto", "Opaque"]).optional().describe("Background mode"),
-  n: z.number().int().min(1).max(4).optional().default(1).describe("Number of images to generate (default: 1)"),
-  output_format: z.enum(["PNG", "JPEG", "WebP"]).optional().describe("Output file format"),
+  size: z.enum(GPT_IMAGE_2_SIZES).meta({ title: "Size" }).optional().default("1024x1024").describe("Output image size preset (default: 1024x1024)"),
+  quality: z.enum(["High", "Medium", "Low"]).meta({ title: "Quality" }).optional().default("Medium").describe("Rendering quality level (default: Medium, use High only when requested)"),
+  background: z.enum(["Auto", "Opaque"]).meta({ title: "Background" }).optional().describe("Background mode"),
+  n: z.number().int().min(1).max(4).meta({ title: "Number of Images" }).optional().default(1).describe("Number of images to generate (default: 1)"),
+  output_format: z.enum(["PNG", "JPEG", "WebP"]).meta({ title: "Output Format" }).optional().describe("Output file format"),
 });
 export type GptImage2Input = z.infer<typeof GptImage2Input>;
 
@@ -66,8 +66,8 @@ export const GptImage2Output = z
 export type GptImage2Output = z.infer<typeof GptImage2Output>;
 
 export const MergeVideosInput = z.object({
-  video_urls: z.array(z.string().url()).min(2).max(100).describe("2 to 100 ordered video URLs to concatenate"),
-  transition: z.enum(["none", "fade", "dissolve"]).optional().default("none").describe("Transition effect between videos"),
+  video_urls: z.array(z.string().url()).min(2).max(100).meta({ title: "Videos" }).describe("2 to 100 ordered video URLs to concatenate"),
+  transition: z.enum(["none", "fade", "dissolve"]).meta({ title: "Transition" }).optional().default("none").describe("Transition effect between videos"),
 });
 export type MergeVideosInput = z.infer<typeof MergeVideosInput>;
 
@@ -110,6 +110,67 @@ export const ReadSkillAssetOutput = z.object({
   contentHash: z.string(),
 });
 export type ReadSkillAssetOutput = z.infer<typeof ReadSkillAssetOutput>;
+
+export const QuestionOption = z.object({
+  id: z.string(),
+  label: z.string(),
+  description: z.string().optional(),
+  recommended: z.boolean().optional(),
+});
+export type QuestionOption = z.infer<typeof QuestionOption>;
+
+export const Question = z.object({
+  id: z.string(),
+  question: z.string(),
+  type: z.enum(["choice", "text"]),
+  options: z.array(QuestionOption).optional(),
+  placeholder: z.string().optional(),
+  allowOther: z.boolean().optional(),
+});
+export type Question = z.infer<typeof Question>;
+
+export const RequestUserOptionsInput = z.object({
+  message: z.string().describe("Contextual message explaining why options are being requested"),
+  questions: z.array(Question).min(1).max(4).describe("1 to 4 questions for the user"),
+});
+export type RequestUserOptionsInput = z.infer<typeof RequestUserOptionsInput>;
+
+export const AnswerItem = z.object({
+  questionId: z.string(),
+  question: z.string().optional(),
+  answer: z.string(),
+});
+export type AnswerItem = z.infer<typeof AnswerItem>;
+
+export const RequestUserOptionsOutput = z.object({
+  answers: z.array(AnswerItem),
+});
+export type RequestUserOptionsOutput = z.infer<typeof RequestUserOptionsOutput>;
+
+export const PlanStepInput = z.object({
+  title: z.string().describe("Short title of the step"),
+  description: z.string().describe("Description of what this step will do"),
+  tool: z.string().describe("Name of the tool to execute"),
+  input: z.record(z.string(), z.unknown()).describe("Input arguments for the tool"),
+  estimatedCredits: z.number().optional().describe("Estimated credits filled by server"),
+});
+export type PlanStepInput = z.infer<typeof PlanStepInput>;
+
+export const SubmitPlanInput = z.object({
+  title: z.string().describe("Title of the plan"),
+  overview: z.string().describe("Overview or rationale of the plan"),
+  steps: z.array(PlanStepInput).min(1).describe("List of planned steps"),
+  totalEstimatedCredits: z.number().optional().describe("Total estimated credits filled by server"),
+});
+export type SubmitPlanInput = z.infer<typeof SubmitPlanInput>;
+
+export const SubmitPlanOutput = z.object({
+  action: z.enum(["run_all", "step_by_step", "request_changes"]),
+  feedback: z.string().optional(),
+  status: z.string().optional(),
+  steps: z.array(z.unknown()).optional(),
+});
+export type SubmitPlanOutput = z.infer<typeof SubmitPlanOutput>;
 
 export const MagicaRunSuccess = z.object({
   ok: z.literal(true),

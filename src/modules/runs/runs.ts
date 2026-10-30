@@ -13,6 +13,7 @@ import { AppError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import { getOwnedChat } from "@/modules/chats/chats";
 import { refundLeakedHolds } from "@/modules/credits/credits";
+import { getPendingWaitpointForRun } from "@/modules/waitpoints/waitpoints";
 
 export async function dispatchRun(run: AgentRun, traceId: string) {
   if (run.triggerRunId) {
@@ -125,11 +126,14 @@ export async function getActiveAgentRun(userId: string, chatId: string) {
     }
   }
 
+  const waitpoint = await getPendingWaitpointForRun(run.id);
+
   return {
     runId: run.id,
     triggerRunId: run.triggerRunId ?? "",
     accessToken,
     status: run.status,
+    waitpoint,
   };
 }
 

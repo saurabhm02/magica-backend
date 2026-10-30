@@ -18,7 +18,7 @@ import {
   settleCredits,
 } from "@/modules/credits/credits";
 import { sendMessage } from "@/modules/messages/messages";
-import { runAgentTurn, textStream } from "@/trigger/agent-turn";
+import { runAgentTurn } from "@/trigger/agent-turn";
 
 let userId: string;
 
@@ -353,7 +353,6 @@ describe("Credits System", { timeout: 60_000 }, () => {
     vi.spyOn(metadata, "replace").mockImplementation((data) => {
       metadataStates.push(data);
     });
-    vi.spyOn(textStream, "append").mockResolvedValue(undefined);
 
     await runAgentTurn(runId, "test-exhaust-trace");
 
@@ -538,7 +537,6 @@ describe("Credits System", { timeout: 60_000 }, () => {
       throw new Error("Simulated engine crash during run");
     });
     vi.spyOn(metadata, "replace").mockImplementation(() => {});
-    vi.spyOn(textStream, "append").mockResolvedValue(undefined);
 
     // Running the agent turn will crash
     await expect(runAgentTurn(runId, "trace-crash")).rejects.toThrow("Simulated engine crash during run");

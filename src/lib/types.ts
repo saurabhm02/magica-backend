@@ -12,6 +12,7 @@ export type LlmUsage = { promptTokens: number; completionTokens: number; totalTo
 
 export type LlmEvent =
   | { type: "text-delta"; text: string }
+  | { type: "reasoning-delta"; text: string }
   | { type: "tool-call-delta"; index: number; id?: string; name?: string; arguments?: string }
   | ({ type: "usage" } & LlmUsage)
   | { type: "done"; model: string }

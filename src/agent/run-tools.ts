@@ -1,10 +1,12 @@
 import type { Prisma } from "@prisma/client";
-import { runs } from "@trigger.dev/sdk";
+import { metadata, runs } from "@trigger.dev/sdk";
+import { randomUUID } from "node:crypto";
 import type { z } from "zod";
 import { getTool } from "@/agent/tools/registry";
 import type { ContentBlock } from "@/contracts/content-blocks";
 import type { SafeError } from "@/contracts/errors";
 import type { RunMetadata } from "@/contracts/run";
+import type { AnswerItem } from "@/contracts/tools";
 import { CREDIT_RESERVE_MULTIPLIER, GENERIC_SAFE_MESSAGE, SAFE_ERROR_MESSAGES } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { AppError, toSafeError } from "@/lib/errors";
@@ -19,6 +21,7 @@ import {
 } from "@/lib/types";
 import { reserveCredits } from "@/modules/credits/credits";
 import { finishToolInvocation } from "@/modules/tools/tools";
+import { createWaitpoint, deriveShortTitle, formatCreditsM, waitForWaitpoint } from "@/modules/waitpoints/waitpoints";
 import { magicaRun } from "@/trigger/magica-run";
 
 type ToolMeta = NonNullable<RunMetadata["tools"]>[number];
@@ -32,6 +35,8 @@ export type ExecuteTurnToolsParams = {
   toolCalls: ToolCall[];
   toolsMetadata: ToolMeta[];
   assetsMetadata: AssetMeta[];
+  planMode?: boolean;
+  planApproved?: boolean;
   onMetadataChange: () => void;
 };
 
@@ -39,6 +44,8 @@ export type ExecuteTurnToolsResult = {
   contentBlocks: ContentBlock[];
   toolMessages: LlmMessage[];
   insufficientCreditsError?: SafeError;
+  waitpointExpiredError?: SafeError;
+  planApproved?: boolean;
 };
 
 type Outcome =
@@ -142,6 +149,14 @@ export async function executeTurnTools(params: ExecuteTurnToolsParams): Promise<
     if (!tool) {
       logger.warn("unknown tool called", { runId, toolInvocationId: record.id, name: toolCall.name });
       return fail({ code: "TOOL_INPUT_INVALID", message: `Unknown tool: ${toolCall.name}`, retryable: false });
+    }
+
+    if (params.planMode && !params.planApproved && isMagicaTool(tool)) {
+      return fail({
+        code: "TOOL_INPUT_INVALID",
+        message: "Plan mode is active. You must submit a plan with submit_plan and receive approval before executing paid tools.",
+        retryable: false,
+      });
     }
 
     const parsed = tool.inputSchema.safeParse(rawInput);
@@ -281,10 +296,71 @@ export async function executeTurnTools(params: ExecuteTurnToolsParams): Promise<
       },
     );
 
+    let displayLabel = call.display?.label;
+    let displayDoneLabel = call.display?.doneLabel;
+    let displayDetail = call.display?.detail;
+    let displayFields = call.display?.fields;
+
+    if (call.toolCall.name === "request_user_options") {
+      if (outcome.ok && outcome.output) {
+        const answers = (outcome.output as { answers?: Array<{ questionId?: string; question?: string; answer: string }> }).answers;
+        if (answers && Array.isArray(answers)) {
+          displayLabel = "User input received";
+          displayDoneLabel = "User input received";
+          displayFields = answers.map((a, i) => ({
+            label: a.question || `Q${i + 1}`,
+            value: a.answer,
+          }));
+        }
+      } else if (!outcome.ok && outcome.error.code === "WAITPOINT_EXPIRED") {
+        displayDetail = outcome.error.message;
+      }
+    }
+
+    if (call.toolCall.name === "submit_plan") {
+      if (outcome.ok && outcome.output) {
+        const planOut = outcome.output as {
+          action?: "run_all" | "step_by_step" | "request_changes";
+          feedback?: string;
+          steps?: Array<{ title: string; description: string; estimatedCredits?: number }>;
+        };
+        const rawInput = call.parsedInput as {
+          title?: string;
+          overview?: string;
+          steps?: Array<{ title: string; description: string; estimatedCredits?: number }>;
+          totalEstimatedCredits?: number;
+        };
+        const steps = planOut.steps ?? rawInput?.steps ?? [];
+        const totalEst = rawInput?.totalEstimatedCredits ?? steps.reduce((sum, s) => sum + (s.estimatedCredits ?? 0), 0);
+
+        if (planOut.action === "run_all" || planOut.action === "step_by_step") {
+          displayLabel = `Plan approved ${rawInput?.title ?? ""} (${steps.length} steps)`.trim();
+          displayDoneLabel = displayLabel;
+          displayFields = [
+            { label: "Title", value: rawInput?.title ?? "" },
+            { label: "Overview", value: rawInput?.overview ?? "" },
+            ...steps.map((s, idx) => ({
+              label: `Step ${idx + 1} (~${formatCreditsM(s.estimatedCredits ?? 0)}M)`,
+              value: s.title ? `${s.title}: ${s.description}` : s.description,
+            })),
+            { label: "Total estimated", value: `~${formatCreditsM(totalEst)}M credits` },
+          ];
+        } else if (planOut.action === "request_changes") {
+          displayLabel = "Plan changes requested";
+          displayDoneLabel = "made a plan";
+          displayDetail = planOut.feedback ?? "";
+        }
+      }
+    }
+
     setStep(call.record.id, {
       status: updated.status as ToolMeta["status"],
       finishedAt: new Date().toISOString(),
       credits: outcome.ok ? outcome.creditUsed : undefined,
+      label: displayLabel,
+      doneLabel: displayDoneLabel,
+      detail: displayDetail,
+      fields: displayFields,
     });
     if (outcome.ok && call.tool) extractAssets(call.tool, outcome.output, call.record.id, assetsMetadata);
 
@@ -295,10 +371,10 @@ export async function executeTurnTools(params: ExecuteTurnToolsParams): Promise<
         name: call.toolCall.name,
         input: call.rawInput,
         renderKey: call.tool?.renderKey,
-        label: call.display?.label,
-        doneLabel: call.display?.doneLabel,
-        detail: call.display?.detail,
-        fields: call.display?.fields,
+        label: displayLabel,
+        doneLabel: displayDoneLabel,
+        detail: displayDetail,
+        fields: displayFields,
         model: call.display?.model,
       },
       toolResultBlock: {
@@ -330,6 +406,8 @@ export async function executeTurnTools(params: ExecuteTurnToolsParams): Promise<
 
   const contentBlocks: ContentBlock[] = [];
   const toolMessages: LlmMessage[] = [];
+  let waitpointExpiredError: SafeError | undefined;
+  let planApproved = params.planApproved ?? false;
 
   const sortedCalls = [...calls].sort((a, b) => a.order - b.order);
   for (const call of sortedCalls) {
@@ -337,11 +415,299 @@ export async function executeTurnTools(params: ExecuteTurnToolsParams): Promise<
       ok: false,
       error: { code: "INTERNAL", message: GENERIC_SAFE_MESSAGE, retryable: false },
     };
+    if (!outcome.ok && outcome.error.code === "WAITPOINT_EXPIRED") {
+      waitpointExpiredError = outcome.error;
+    }
     const finished = await finishToolCall(call, outcome);
     contentBlocks.push(finished.toolUseBlock, finished.toolResultBlock);
     toolMessages.push(finished.toolMessage);
+
+    if (call.toolCall.name === "submit_plan" && outcome.ok && outcome.output) {
+      const planOut = outcome.output as {
+        action?: "run_all" | "step_by_step" | "request_changes";
+        steps?: Array<{ title: string; description: string; tool: string; input: Record<string, unknown>; estimatedCredits?: number }>;
+      };
+      if (planOut.action === "run_all" || planOut.action === "step_by_step") {
+        planApproved = true;
+        const rawInput = call.parsedInput as {
+          title: string;
+          overview: string;
+          steps: Array<{ title: string; description: string; tool: string; input: Record<string, unknown>; estimatedCredits?: number }>;
+        };
+        const stepsToRun = planOut.steps ?? rawInput?.steps ?? [];
+        if (stepsToRun.length > 0) {
+          const planExec = await executePlanSteps({
+            runId,
+            userId,
+            traceId,
+            signal,
+            plan: {
+              title: rawInput.title,
+              overview: rawInput.overview,
+              steps: stepsToRun,
+            },
+            mode: planOut.action,
+            toolsMetadata,
+            assetsMetadata,
+            onMetadataChange,
+            startOrder: sortedCalls.length,
+          });
+          contentBlocks.push(...planExec.contentBlocks);
+          toolMessages.push(...planExec.toolMessages);
+        }
+      }
+    }
   }
 
   onMetadataChange();
-  return { contentBlocks, toolMessages, insufficientCreditsError };
+  return { contentBlocks, toolMessages, insufficientCreditsError, waitpointExpiredError, planApproved };
+}
+
+async function executePlanSteps(params: {
+  runId: string;
+  userId: string;
+  traceId: string;
+  signal: AbortSignal;
+  plan: {
+    title: string;
+    overview: string;
+    steps: Array<{ title: string; description: string; tool: string; input: Record<string, unknown>; estimatedCredits?: number }>;
+  };
+  mode: "run_all" | "step_by_step";
+  toolsMetadata: ToolMeta[];
+  assetsMetadata: AssetMeta[];
+  onMetadataChange: () => void;
+  startOrder: number;
+}): Promise<{ contentBlocks: ContentBlock[]; toolMessages: LlmMessage[] }> {
+  const { runId, userId, traceId, signal, plan, mode, toolsMetadata, assetsMetadata, onMetadataChange, startOrder } = params;
+  const contentBlocks: ContentBlock[] = [];
+  const toolMessages: LlmMessage[] = [];
+
+  const shortTitle = deriveShortTitle(plan.title);
+  const planMeta: NonNullable<RunMetadata["plan"]> = {
+    title: plan.title,
+    shortTitle,
+    steps: plan.steps.map((s) => ({ title: s.title, status: "pending" })),
+    done: 0,
+    total: plan.steps.length,
+  };
+
+  try {
+    metadata.set("plan", planMeta);
+  } catch {}
+  onMetadataChange();
+
+  let lastAssetUrl: string | undefined;
+  let order = startOrder;
+
+  for (const [i, step] of plan.steps.entries()) {
+    if (signal.aborted) break;
+
+    const currentStepMeta = planMeta.steps[i];
+    if (currentStepMeta) currentStepMeta.status = "running";
+    try {
+      metadata.set("plan", planMeta);
+    } catch {}
+    onMetadataChange();
+
+    const tool = getTool(step.tool);
+    if (!tool) {
+      if (currentStepMeta) currentStepMeta.status = "failed";
+      try {
+        metadata.set("plan", planMeta);
+      } catch {}
+      onMetadataChange();
+      continue;
+    }
+
+    const stepInput = { ...step.input };
+    if (step.tool === "crop_image" && lastAssetUrl && (!stepInput.image_url || typeof stepInput.image_url !== "string" || stepInput.image_url.startsWith("$"))) {
+      stepInput.image_url = lastAssetUrl;
+    }
+
+    const toolCallId = `plan_step_${i}_${randomUUID().slice(0, 8)}`;
+    const stepOrder = order++;
+    const display = tool.describe(stepInput);
+
+    const record = await db.toolInvocation.create({
+      data: {
+        runId,
+        userId,
+        toolCallId,
+        order: stepOrder,
+        toolName: step.tool,
+        status: "running",
+        input: stepInput as Prisma.InputJsonValue,
+        idempotencyKey: `tool:${runId}:${toolCallId}`,
+      },
+    });
+
+    toolsMetadata.push({
+      id: record.id,
+      name: step.tool,
+      status: "running",
+      startedAt: new Date().toISOString(),
+      renderKey: tool.renderKey,
+      label: display.label,
+      doneLabel: display.doneLabel,
+      detail: display.detail,
+      fields: display.fields,
+      model: display.model,
+    });
+    onMetadataChange();
+
+    const estimate = await tool.estimateCredits(stepInput);
+    const reserveAmount = Math.round(estimate * CREDIT_RESERVE_MULTIPLIER);
+    if (reserveAmount > 0) {
+      await reserveCredits({ userId, runId, toolInvocationId: record.id, amount: reserveAmount });
+    }
+
+    let output: unknown;
+    let creditUsed = estimate;
+    const t0 = Date.now();
+
+    try {
+      if (isMagicaTool(tool)) {
+        const magicaTool = tool as MagicaTool;
+        const magicaPayload = {
+          params: magicaTool.magica.buildInput(stepInput),
+          subModelId: magicaTool.magica.subModelId?.(stepInput),
+        };
+        const batch = await magicaRun.batchTriggerAndWait([
+          {
+            payload: {
+              toolInvocationId: record.id,
+              nodeType: magicaTool.magica.nodeType,
+              subModelId: magicaPayload.subModelId,
+              params: magicaPayload.params,
+            },
+          },
+        ]);
+        const runRes = batch.runs[0];
+        if (!runRes?.ok) {
+          throw new Error("Magica step execution failed");
+        }
+        const runOut = runRes.output as { ok: boolean; output?: Record<string, unknown>; creditUsed?: number; error?: SafeError } | undefined;
+        if (!runOut?.ok || !runOut.output) {
+          throw new Error(runOut?.error?.message ?? "Magica step execution failed");
+        }
+        output = runOut.output;
+        if (typeof runOut.creditUsed === "number") creditUsed = runOut.creditUsed;
+      } else {
+        output = await (tool as LocalTool).execute(stepInput, {
+          runId,
+          userId,
+          toolInvocationId: record.id,
+          signal,
+          traceId,
+          order: stepOrder,
+        });
+      }
+
+      const durationMs = Date.now() - t0;
+      const { assets } = await finishToolInvocation(
+        { id: record.id, userId, runId, toolName: step.tool },
+        { ok: true, output, creditUsed, durationMs },
+      );
+
+      const stepMeta = toolsMetadata.find((s) => s.id === record.id);
+      if (stepMeta) {
+        stepMeta.status = "succeeded";
+        stepMeta.finishedAt = new Date().toISOString();
+        stepMeta.credits = creditUsed;
+      }
+
+      if (assets && assets.length > 0) {
+        for (const a of assets) {
+          if (a.url) {
+            assetsMetadata.push({ type: a.type, url: a.url, toolInvocationId: record.id });
+            lastAssetUrl = a.url;
+          }
+        }
+      }
+
+      if (currentStepMeta) currentStepMeta.status = "done";
+      planMeta.done = i + 1;
+      try {
+        metadata.set("plan", planMeta);
+      } catch {}
+      onMetadataChange();
+
+      contentBlocks.push(
+        {
+          type: "tool_use" as const,
+          id: toolCallId,
+          name: step.tool,
+          input: stepInput,
+          renderKey: tool.renderKey,
+          label: display.label,
+          doneLabel: display.doneLabel,
+          detail: display.detail,
+          fields: display.fields,
+          model: display.model,
+        },
+        {
+          type: "tool_result" as const,
+          toolUseId: toolCallId,
+          output,
+          credits: creditUsed,
+          durationMs,
+          assets: assets && assets.length > 0 ? assets : undefined,
+        },
+      );
+      toolMessages.push({
+        role: "tool" as const,
+        tool_call_id: toolCallId,
+        content: JSON.stringify(output ?? {}),
+      });
+
+      if (mode === "step_by_step" && i < plan.steps.length - 1) {
+        const stepWp = await createWaitpoint({
+          runId,
+          toolInvocationId: record.id,
+          type: "options",
+          input: {
+            message: `Step ${i + 1} (${step.title}) completed. Continue to next step?`,
+            questions: [
+              {
+                id: "step_continuation",
+                question: "Continue execution?",
+                type: "choice",
+                options: [
+                  { id: "continue", label: "Continue", recommended: true },
+                  { id: "stop", label: "Stop" },
+                ],
+              },
+            ],
+          },
+          traceId,
+        });
+        const decision = await waitForWaitpoint<{ answers?: AnswerItem[] }>({
+          waitpointId: stepWp.waitpoint.id,
+          tokenId: stepWp.tokenId,
+          runId,
+          toolInvocationId: record.id,
+          input: stepWp.waitpoint.payload,
+          traceId,
+        });
+        const selected = decision?.answers?.[0]?.answer?.toLowerCase();
+        if (selected === "stop") {
+          break;
+        }
+      }
+    } catch (err) {
+      if (currentStepMeta) currentStepMeta.status = "failed";
+      try {
+        metadata.set("plan", planMeta);
+      } catch {}
+      onMetadataChange();
+      await finishToolInvocation(
+        { id: record.id, userId, runId, toolName: step.tool },
+        { ok: false, error: toSafeError(err) },
+      );
+      break;
+    }
+  }
+
+  return { contentBlocks, toolMessages };
 }

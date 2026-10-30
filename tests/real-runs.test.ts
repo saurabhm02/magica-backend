@@ -4,7 +4,7 @@ import { metadata } from "@trigger.dev/sdk";
 import { db } from "@/lib/db";
 import { createChat } from "@/modules/chats/chats";
 import { sendMessage } from "@/modules/messages/messages";
-import { runAgentTurn, textStream } from "@/trigger/agent-turn";
+import { runAgentTurn } from "@/trigger/agent-turn";
 import { executeMagicaRun, magicaRun } from "@/trigger/magica-run";
 
 let userId: string;
@@ -17,9 +17,6 @@ function logEvent(name: string, data?: unknown) {
 beforeAll(async () => {
   vi.spyOn(metadata, "replace").mockImplementation((meta) => {
     logEvent("METADATA_REPLACE", meta);
-  });
-  vi.spyOn(textStream, "append").mockImplementation(async (text) => {
-    logEvent(`STREAM_TEXT (${text.length} chars)`, text.slice(0, 60));
   });
   vi.spyOn(magicaRun, "batchTriggerAndWait").mockImplementation(async (items) => {
     const itemList = items as Array<{ payload: Parameters<typeof executeMagicaRun>[0] }>;

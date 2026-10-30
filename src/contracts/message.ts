@@ -14,6 +14,7 @@ export const Message = z.object({
   status: MessageStatus,
   content: z.array(ContentBlock),
   clientRequestId: z.string().nullable(),
+  suggestion: z.string().optional(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });

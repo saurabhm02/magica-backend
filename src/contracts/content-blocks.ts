@@ -5,7 +5,8 @@ const TextBlock = z.object({ type: z.literal("text"), text: z.string() });
 
 const ThinkingBlock = z.object({ type: z.literal("thinking"), text: z.string() });
 
-const ReasoningBlock = z.object({ type: z.literal("reasoning"), text: z.string() });
+// `title` is a few-word summary ("Decided to inspect the working directory"), set when the reasoning led to a tool call.
+const ReasoningBlock = z.object({ type: z.literal("reasoning"), text: z.string(), title: z.string().optional() });
 
 const ToolField = z.object({
   label: z.string(),

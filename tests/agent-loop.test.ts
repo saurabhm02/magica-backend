@@ -12,7 +12,7 @@ import { db } from "@/lib/db";
 import type { LlmEvent, LlmMessage, ToolCall } from "@/lib/types";
 import { createChat } from "@/modules/chats/chats";
 import { sendMessage } from "@/modules/messages/messages";
-import { runAgentTurn, textStream } from "@/trigger/agent-turn";
+import { reasoningStream, runAgentTurn, textStream } from "@/trigger/agent-turn";
 import { executeMagicaRun, magicaRun } from "@/trigger/magica-run";
 
 const baseUrl = process.env.MAGICA_BASE_URL?.replace(/\/$/, "") || "https://inference.magica.com";
@@ -44,6 +44,12 @@ afterAll(async () => {
   await db.$disconnect();
 });
 
+async function readAll(body: ReadableStream<string>) {
+  let text = "";
+  for await (const part of body) text += part;
+  return text;
+}
+
 describe("Agent turn loop with chained tools", () => {
   it("plain text reply -> metadata goes thinking -> working -> complete", async () => {
     const chat = await createChat(userId);
@@ -68,11 +74,103 @@ describe("Agent turn loop with chained tools", () => {
         metadataStates.push(data.status);
       }
     });
-    vi.spyOn(textStream, "append").mockResolvedValue(undefined);
 
     await runAgentTurn(runId, "test-plain-text-trace");
 
     expect(metadataStates).toEqual(["thinking", "working", "complete"]);
+  });
+
+  it("thinking before a tool call becomes a titled reasoning step, saved before the tool_use", async () => {
+    const chat = await createChat(userId);
+    const sent = await sendMessage(userId, chat.id, { content: "Make a sunset", clientRequestId: randomUUID(), planMode: false });
+
+    mswServer.use(
+      http.post(`${baseUrl}/v1/nodes/gpt_image_2/run`, () => HttpResponse.json({ runId: "gpt-run-r" }, { status: 202 })),
+      http.get(`${baseUrl}/v1/nodes/runs/gpt-run-r`, () =>
+        HttpResponse.json({ id: "gpt-run-r", status: "COMPLETED", output: { images: ["https://example.com/r.png"] } }),
+      ),
+    );
+
+    async function* toolTurn(): AsyncGenerator<LlmEvent> {
+      yield { type: "reasoning-delta", text: "The user wants a sunset, so I will make an image." };
+      yield { type: "tool-call-delta", index: 0, id: "call_r", name: "gpt_image_2", arguments: JSON.stringify({ prompt: "sunset" }) };
+      yield { type: "done", model: "test-model" };
+    }
+    async function* textTurn(): AsyncGenerator<LlmEvent> {
+      yield { type: "reasoning-delta", text: "Now answer." };
+      yield { type: "text-delta", text: "Here it is." };
+      yield { type: "done", model: "test-model" };
+    }
+    let turn = 0;
+    vi.spyOn(llmModule, "streamChat").mockImplementation(() => (turn++ === 0 ? toolTurn() : textTurn()));
+    vi.spyOn(llmModule, "summarizeReasoning").mockResolvedValue("Decided to make the image");
+    vi.spyOn(llmModule, "generateSuggestion").mockResolvedValue(undefined);
+    let lastMeta: RunMetadata | undefined;
+    vi.spyOn(metadata, "replace").mockImplementation((data) => {
+      lastMeta = data as RunMetadata;
+    });
+    let titledTools: RunMetadata["tools"];
+    vi.spyOn(metadata, "set").mockImplementation((key, value) => {
+      if (key === "tools") titledTools = JSON.parse(JSON.stringify(value));
+      return metadata;
+    });
+    vi.spyOn(magicaRun, "batchTriggerAndWait").mockImplementation(async (items) => {
+      const itemList = items as Array<{ payload: Parameters<typeof executeMagicaRun>[0] }>;
+      const runs = await Promise.all(
+        itemList.map(async (item) => {
+          const res = await executeMagicaRun(item.payload, { signal: new AbortController().signal, sleep: async () => {} });
+          return { id: item.payload.toolInvocationId, ok: true, output: { ok: true, output: res.output, creditUsed: res.creditUsed } };
+        }),
+      );
+      return { runs } as unknown as Awaited<ReturnType<typeof magicaRun.batchTriggerAndWait>>;
+    });
+
+    await runAgentTurn(sent.run.id, "test-reasoning-step");
+
+    // Only the thinking that led to a tool call becomes a step. Its title arrives through
+    // a tools-only update, so a showing question card is never wiped.
+    expect(titledTools?.[0]).toMatchObject({ renderKey: "reasoning", label: "Decided to make the image" });
+    expect(lastMeta?.tools?.map((t) => [t.renderKey, t.label])).toEqual([
+      ["reasoning", "Decided to make the image"],
+      ["image-result", expect.any(String)],
+    ]);
+    const reply = await db.message.findFirstOrThrow({ where: { chatId: chat.id, role: "assistant" } });
+    const types = (reply.content as ContentBlock[]).map((b) => b.type);
+    expect(types).toEqual(["reasoning", "tool_use", "tool_result", "reasoning", "text"]);
+    expect((reply.content as ContentBlock[])[0]).toMatchObject({ type: "reasoning", title: "Decided to make the image" });
+  });
+
+  it("streams the reply and the thinking through one open stream each, not a request per token", async () => {
+    const chat = await createChat(userId);
+    const sent = await sendMessage(userId, chat.id, { content: "Hello", clientRequestId: randomUUID(), planMode: false });
+
+    async function* reply(): AsyncGenerator<LlmEvent> {
+      yield { type: "reasoning-delta", text: "The user " };
+      yield { type: "reasoning-delta", text: "says hello." };
+      yield { type: "text-delta", text: "Hello" };
+      yield { type: "text-delta", text: " world!" };
+      yield { type: "done", model: "test-model" };
+    }
+    vi.spyOn(llmModule, "streamChat").mockImplementation(() => reply());
+    vi.spyOn(llmModule, "generateSuggestion").mockResolvedValue(undefined);
+    vi.spyOn(metadata, "replace").mockReturnValue(undefined as unknown as void);
+
+    // Read what each stream's single pipe receives.
+    const received: Record<string, Promise<string>> = {};
+    const capture = (stream: typeof textStream) =>
+      vi.spyOn(stream, "pipe").mockImplementation((body) => {
+        received[stream.id] = readAll(body as ReadableStream<string>);
+        return { stream: body, waitUntilComplete: () => received[stream.id]! } as unknown as ReturnType<typeof stream.pipe>;
+      });
+    const textPipe = capture(textStream);
+    const reasoningPipe = capture(reasoningStream);
+
+    await runAgentTurn(sent.run.id, "test-live-streams");
+
+    expect(textPipe).toHaveBeenCalledTimes(1);
+    expect(reasoningPipe).toHaveBeenCalledTimes(1);
+    expect(await received[textStream.id]).toBe("Hello world!");
+    expect(await received[reasoningStream.id]).toBe("The user says hello.");
   });
 
   it("chains gpt_image_2 -> crop_image -> text answer with correct message formats and block ordering", async () => {
@@ -149,7 +247,6 @@ describe("Agent turn loop with chained tools", () => {
     });
 
     vi.spyOn(metadata, "replace").mockReturnValue(undefined as unknown as void);
-    vi.spyOn(textStream, "append").mockResolvedValue(undefined);
     vi.spyOn(magicaRun, "batchTriggerAndWait").mockImplementation(async (items) => {
       const itemList = items as Array<{ payload: Parameters<typeof executeMagicaRun>[0] }>;
       const runs = await Promise.all(
@@ -329,7 +426,6 @@ describe("Agent turn loop with chained tools", () => {
     });
 
     vi.spyOn(metadata, "replace").mockReturnValue(undefined as unknown as void);
-    vi.spyOn(textStream, "append").mockResolvedValue(undefined);
     vi.spyOn(magicaRun, "batchTriggerAndWait").mockImplementation(async (items) => {
       const itemList = items as Array<{ payload: Parameters<typeof executeMagicaRun>[0] }>;
       const runs = await Promise.all(
@@ -425,7 +521,6 @@ describe("Agent turn loop with chained tools", () => {
 
     vi.spyOn(llmModule, "streamChat").mockImplementation(() => mockStream());
     vi.spyOn(metadata, "replace").mockImplementation(() => {});
-    vi.spyOn(textStream, "append").mockResolvedValue(undefined);
 
     await runAgentTurn(runId, "trace_no_dupe");
 

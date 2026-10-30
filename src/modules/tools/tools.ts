@@ -57,10 +57,14 @@ export async function finishToolInvocation(
   }
 
   const tool = getTool(invocation.toolName);
-  const assets =
-    outcome.ok && tool?.assets && outcome.output
-      ? tool.assets(outcome.output).filter((a) => Boolean(a.url)).map((a) => ({ type: a.type, url: a.url }))
-      : [];
+  let assets: Array<{ type: "image" | "video" | "audio"; url: string }> = [];
+  if (outcome.ok && tool?.assets && outcome.output) {
+    try {
+      assets = tool.assets(outcome.output).filter((a) => Boolean(a.url)).map((a) => ({ type: a.type, url: a.url }));
+    } catch (err) {
+      logger.warn("failed to extract assets in finishToolInvocation", { toolInvocationId: invocation.id, detail: String(err) });
+    }
+  }
 
   const updated = await db.toolInvocation.update({
     where: { id: invocation.id },

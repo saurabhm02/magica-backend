@@ -97,15 +97,76 @@ export const RunResponse = z.object({
 });
 export type RunResponse = z.infer<typeof RunResponse>;
 
+export const WaitpointStatus = z.enum(["pending", "answered", "skipped", "expired"]);
+export type WaitpointStatus = z.infer<typeof WaitpointStatus>;
+
+export const WaitpointResponse = z.object({
+  id: z.string(),
+  type: z.string(),
+  status: WaitpointStatus,
+  message: z.string().optional(),
+  questions: z.array(z.unknown()).optional().default([]),
+  payload: z.unknown().optional(),
+  response: z.unknown().optional(),
+  expiresAt: z.string(),
+});
+export type WaitpointResponse = z.infer<typeof WaitpointResponse>;
+
 export const ActiveRunResponse = z
   .object({
     runId: z.string(),
     triggerRunId: z.string(),
     accessToken: z.string(),
     status: RunStatus,
+    waitpoint: WaitpointResponse.nullable().optional(),
   })
   .nullable();
 export type ActiveRunResponse = z.infer<typeof ActiveRunResponse>;
+
+export const RespondWaitpointInput = z
+  .object({
+    answers: z
+      .array(
+        z.object({
+          questionId: z.string(),
+          question: z.string().optional(),
+          answer: z.string(),
+        }),
+      )
+      .optional(),
+    skip: z.boolean().optional(),
+    action: z.enum(["run_all", "step_by_step"]).optional(),
+    request_changes: z.string().optional(),
+  })
+  .refine(
+    (data) =>
+      data.skip === true ||
+      (Array.isArray(data.answers) && data.answers.length > 0) ||
+      data.action === "run_all" ||
+      data.action === "step_by_step" ||
+      typeof data.request_changes === "string",
+    {
+      message: "Valid action, answers array, request_changes, or skip: true must be provided",
+    },
+  );
+export type RespondWaitpointInput = z.infer<typeof RespondWaitpointInput>;
+
+export const RespondWaitpointResponse = z.object({
+  id: z.string(),
+  status: WaitpointStatus,
+  action: z.string().optional(),
+  answers: z
+    .array(
+      z.object({
+        questionId: z.string(),
+        question: z.string().optional(),
+        answer: z.string(),
+      }),
+    )
+    .optional(),
+  feedback: z.string().optional(),
+});
+export type RespondWaitpointResponse = z.infer<typeof RespondWaitpointResponse>;
 
 export const CancelRunResponse = z.object({
   runId: z.string(),

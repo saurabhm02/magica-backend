@@ -19,7 +19,7 @@ import { db } from "@/lib/db";
 import { AppError } from "@/lib/errors";
 import { createChat } from "@/modules/chats/chats";
 import { sendMessage } from "@/modules/messages/messages";
-import { runAgentTurn, textStream } from "@/trigger/agent-turn";
+import { runAgentTurn } from "@/trigger/agent-turn";
 
 describe("Skills Registry & Frontmatter", () => {
   afterEach(() => {
@@ -378,7 +378,6 @@ describe("Selective Loading in Agent Turn", () => {
 
   beforeAll(async () => {
     vi.spyOn(metadata, "replace").mockReturnValue(undefined as unknown as void);
-    vi.spyOn(textStream, "append").mockResolvedValue(undefined);
     const user = await db.user.create({ data: { clerkUserId: `sel_${randomUUID()}` } });
     userId = user.id;
   });

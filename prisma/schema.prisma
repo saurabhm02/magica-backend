@@ -48,6 +48,13 @@ enum LedgerType {
   refund
 }
 
+enum WaitpointStatus {
+  pending
+  answered
+  skipped
+  expired
+}
+
 model User {
   id            String         @id @default(cuid())
   clerkUserId   String         @unique
@@ -84,6 +91,7 @@ model Message {
   content         Json 
   searchText      String?
   clientRequestId String?
+  suggestion      String?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   runsStarted     AgentRun[]    @relation("RunUserMessage")
@@ -105,6 +113,7 @@ model AgentRun {
   assistantMessageId String?   @unique
   assistantMessage   Message?  @relation("RunAssistantMessage", fields: [assistantMessageId], references: [id], onDelete: Restrict)
   status             RunStatus @default(queued)
+  planMode           Boolean   @default(false)
   chargedCredits     BigInt    @default(0)
   idempotencyKey     String    @unique
   triggerRunId       String?   @unique
@@ -118,6 +127,7 @@ model AgentRun {
   tools              ToolInvocation[]
   skills             RunSkill[]
   ledger             CreditLedger[]
+  waitpoints         Waitpoint[]
 
   @@index([chatId, createdAt])
   @@index([userMessageId])
@@ -144,6 +154,7 @@ model ToolInvocation {
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
   ledger         CreditLedger[]
+  waitpoints     Waitpoint[]
 
   @@unique([runId, toolCallId])
   @@index([runId, order])
@@ -180,4 +191,24 @@ model CreditLedger {
   @@index([userId, createdAt(sort: Desc), id(sort: Desc)])
   @@index([runId])
   @@index([toolInvocationId])
+}
+
+model Waitpoint {
+  id               String          @id @default(cuid())
+  runId            String
+  run              AgentRun        @relation(fields: [runId], references: [id], onDelete: Restrict)
+  toolInvocationId String
+  toolInvocation   ToolInvocation  @relation(fields: [toolInvocationId], references: [id], onDelete: Restrict)
+  type             String
+  tokenId          String          @unique
+  status           WaitpointStatus @default(pending)
+  payload          Json
+  response         Json?
+  expiresAt        DateTime
+  idempotencyKey   String          @unique
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@index([runId, status])
+  @@index([tokenId])
 }

@@ -7,6 +7,8 @@ import { gptImage2Tool } from "./gpt-image-2";
 import { loadSkillTool } from "./load-skill";
 import { mergeVideosTool } from "./merge-videos";
 import { readSkillAssetTool } from "./read-skill-asset";
+import { requestUserOptionsTool } from "./request-user-options";
+import { submitPlanTool } from "./submit-plan";
 
 const toolList: Tool[] = [
   cropImageTool,
@@ -15,6 +17,8 @@ const toolList: Tool[] = [
   getModelInfoTool,
   loadSkillTool,
   readSkillAssetTool,
+  requestUserOptionsTool,
+  submitPlanTool,
 ];
 
 export const toolsRegistry = new Map<string, Tool>(toolList.map((tool) => [tool.name, tool]));

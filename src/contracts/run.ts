@@ -35,6 +35,7 @@ const RunMetadataTool = z.object({
   fields: z.array(RunMetadataToolField).optional(),
   credits: z.number().optional(),
   model: z.string().optional(),
+  text: z.string().optional(), // a reasoning step's raw thinking
 });
 
 const RunMetadataAsset = z.object({
@@ -45,10 +46,27 @@ const RunMetadataAsset = z.object({
 
 const RunMetadataWaitpoint = z.object({
   id: z.string(),
-  type: z.enum(["credit", "plan", "options", "media"]),
-  payload: z.unknown(),
-  expiresAt: z.iso.datetime(),
+  type: z.string(),
+  message: z.string().optional(),
+  questions: z.array(z.unknown()).optional(),
+  payload: z.unknown().optional(),
+  expiresAt: z.string().optional(),
 });
+
+export const RunMetadataPlanStep = z.object({
+  title: z.string(),
+  status: z.enum(["pending", "running", "done", "failed"]),
+});
+export type RunMetadataPlanStep = z.infer<typeof RunMetadataPlanStep>;
+
+export const RunMetadataPlan = z.object({
+  title: z.string(),
+  shortTitle: z.string().optional(),
+  steps: z.array(RunMetadataPlanStep),
+  done: z.number(),
+  total: z.number(),
+});
+export type RunMetadataPlan = z.infer<typeof RunMetadataPlan>;
 
 export const RunMetadata = z.object({
   status: RunMetadataStatus,
@@ -57,7 +75,10 @@ export const RunMetadata = z.object({
   tools: z.array(RunMetadataTool).optional(),
   assets: z.array(RunMetadataAsset).optional(),
   waitpoint: RunMetadataWaitpoint.optional(),
+  plan: RunMetadataPlan.optional(),
   error: SafeError.optional(),
   credits: z.number().optional(),
+  chatTitle: z.string().optional(),
+  suggestion: z.string().optional(),
 });
 export type RunMetadata = z.infer<typeof RunMetadata>;

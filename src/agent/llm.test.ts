@@ -141,3 +141,25 @@ test("an error after the first token yields one error event and does not retry",
   expect(events[0]).toEqual({ type: "text-delta", text: "Hi" });
   expect(events.at(-1)).toMatchObject({ type: "error", code: "LLM_UNAVAILABLE" });
 });
+
+test("the model's reasoning streams as reasoning-delta, before the reply text", async () => {
+  const fetchSpy = vi.fn().mockImplementation(
+    async () =>
+      new Response(
+        sseStream([
+          chunk({ model: "m", choices: [{ index: 0, delta: { reasoning: "The user wants..." }, finish_reason: null }] }),
+          chunk({ model: "m", choices: [{ index: 0, delta: { content: "Hi" }, finish_reason: "stop" }] }),
+          "data: [DONE]\n\n",
+        ]),
+        { status: 200 },
+      ),
+  );
+  vi.stubGlobal("fetch", fetchSpy);
+
+  const events = await collect();
+
+  expect(events.slice(0, 2)).toEqual([
+    { type: "reasoning-delta", text: "The user wants..." },
+    { type: "text-delta", text: "Hi" },
+  ]);
+});

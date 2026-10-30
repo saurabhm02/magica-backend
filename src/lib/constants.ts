@@ -35,7 +35,9 @@ You are not a general chatbot persona. Don't say you are Claude, ChatGPT or any 
 
 # Asking vs doing
 - If the intent is clear, just do it.
-- If a detail really changes the result (platform, aspect ratio, brand, audience), ask one short question. Otherwise pick a sensible default and say which one you picked.
+- If details really change the result (style, brand name, colors, platform, aspect ratio), ask them all at once with request_user_options, never as questions in your reply. Otherwise pick a sensible default and say which one you picked.
+- Once the user has answered, do the work right away. Don't ask more questions; fill any gaps with sensible defaults.
+- When taste decides the result (logos, branding, ad concepts), make 2-3 clearly different options in parallel by calling the tool several times in one step, so the user can compare.
 - Use earlier messages in this chat before asking anything.
 
 # Limits
@@ -46,6 +48,8 @@ You are not a general chatbot persona. Don't say you are Claude, ChatGPT or any 
 export const MAX_HISTORY_MESSAGES = 20;
 export const SAVE_PARTIAL_TEXT_EVERY_MS = 1000;
 export const TEXT_STREAM_ID = "text";
+export const REASONING_STREAM_ID = "reasoning";
+export const REASONING_RENDER_KEY = "reasoning"; // a thinking step in the step list
 export const TERMINAL_RUN_STATUSES: RunStatus[] = ["succeeded", "failed", "cancelled"];
 export const ACTIVE_RUN_STATUSES: RunStatus[] = ["queued", "running", "waiting"];
 
@@ -114,6 +118,8 @@ export const HTTP_STATUS_BY_ERROR_CODE: Partial<Record<ErrorCode, number>> = {
   UNAUTHORIZED: 401,
   NOT_FOUND: 404,
   RUN_ALREADY_ACTIVE: 409,
+  WAITPOINT_ALREADY_RESOLVED: 409,
+  WAITPOINT_EXPIRED: 410,
 };
 export const CORS_ALLOWED_METHODS = "GET,POST,PATCH,DELETE,OPTIONS";
 export const CORS_ALLOWED_HEADERS = "Content-Type,Authorization";
@@ -125,3 +131,10 @@ export const CREDIT_RESERVE_MULTIPLIER = 1.5;
 
 export const MAX_SKILL_FILE_SIZE_BYTES = 64 * 1024;
 export const ALLOWED_SKILL_EXTENSIONS = [".md", ".txt", ".json"] as const;
+
+export const WAITPOINT_TIMEOUT = "24h";
+export const WAITPOINT_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+
+export const FOLLOW_UP_TIMEOUT_MS = 8000;
+
+

@@ -16,7 +16,7 @@ import { GET as getToolRunsRoute, POST as postToolRunRoute } from "@/app/api/v1/
 import { GET as getToolsRoute } from "@/app/api/v1/tools/route";
 import type { ListToolsResponse } from "@/contracts/api";
 import type { SafeError } from "@/contracts/errors";
-import { CropImageInput } from "@/contracts/tools";
+import { CropImageInput, GptImage2Input, MergeVideosInput } from "@/contracts/tools";
 import { auth } from "@trigger.dev/sdk";
 import { executeMagicaRun, magicaRun } from "@/trigger/magica-run";
 import * as authModule from "@/lib/auth";
@@ -108,6 +108,33 @@ describe("Tool input validation", () => {
     expect(parsed.y_percent).toBeUndefined();
     expect(parsed.width_percent).toBeUndefined();
     expect(parsed.height_percent).toBeUndefined();
+  });
+
+  it("input schemas include Magica-matching title metadata for form labels", () => {
+    const cropSchema = z.toJSONSchema(CropImageInput) as {
+      properties?: Record<string, { title?: string }>;
+    };
+    expect(cropSchema.properties?.image_url?.title).toBe("Input Image");
+    expect(cropSchema.properties?.x_percent?.title).toBe("X Position (%)");
+    expect(cropSchema.properties?.y_percent?.title).toBe("Y Position (%)");
+    expect(cropSchema.properties?.width_percent?.title).toBe("Width (%)");
+    expect(cropSchema.properties?.height_percent?.title).toBe("Height (%)");
+
+    const gptSchema = z.toJSONSchema(GptImage2Input) as {
+      properties?: Record<string, { title?: string }>;
+    };
+    expect(gptSchema.properties?.prompt?.title).toBe("Prompt");
+    expect(gptSchema.properties?.size?.title).toBe("Size");
+    expect(gptSchema.properties?.quality?.title).toBe("Quality");
+    expect(gptSchema.properties?.n?.title).toBe("Number of Images");
+    expect(gptSchema.properties?.background?.title).toBe("Background");
+    expect(gptSchema.properties?.output_format?.title).toBe("Output Format");
+
+    const mergeSchema = z.toJSONSchema(MergeVideosInput) as {
+      properties?: Record<string, { title?: string }>;
+    };
+    expect(mergeSchema.properties?.video_urls?.title).toBe("Videos");
+    expect(mergeSchema.properties?.transition?.title).toBe("Transition");
   });
 });
 

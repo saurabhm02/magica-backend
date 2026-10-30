@@ -10,7 +10,7 @@ import { createChat } from "@/modules/chats/chats";
 import { getUserCreditBalance, reserveCredits } from "@/modules/credits/credits";
 import { sendMessage } from "@/modules/messages/messages";
 import { cancelAgentRun, getActiveAgentRun } from "@/modules/runs/runs";
-import { runAgentTurn, textStream } from "@/trigger/agent-turn";
+import { runAgentTurn } from "@/trigger/agent-turn";
 import { magicaRun } from "@/trigger/magica-run";
 
 let userId: string;
@@ -67,7 +67,6 @@ describe("Phase 5: Runs Lifecycle (Cancel, Reload Recovery, Reconnect)", () => {
     }
 
     vi.spyOn(llmModule, "streamChat").mockImplementation(() => gen());
-    vi.spyOn(textStream, "append").mockResolvedValue(undefined);
 
     await runAgentTurn(runId, "test-stream-cancel-trace", controller.signal);
 
@@ -102,7 +101,6 @@ describe("Phase 5: Runs Lifecycle (Cancel, Reload Recovery, Reconnect)", () => {
     }
 
     vi.spyOn(llmModule, "streamChat").mockImplementation(() => gen());
-    vi.spyOn(textStream, "append").mockResolvedValue(undefined);
 
     // When the tool batch is triggered, simulate cancellation abort
     vi.spyOn(magicaRun, "batchTriggerAndWait").mockImplementation(async () => {
