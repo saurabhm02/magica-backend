@@ -4,7 +4,7 @@ Backend for the Agent Chat clone (Magica / Galaxy work trial). Frontend lives in
 
 In short: the frontend sends a message, this backend saves it, starts a durable background run on **Trigger.dev**, and returns straight away. The agent then works in the background — talks to **OpenRouter Free**, loads **skills** when needed, calls **tools** (Crop Image, GPT Image 2, Merge Videos through the Magica API), asks the user for approval when required, and streams progress live. Everything is saved in **Postgres**, so a page reload or a dropped connection doesn't lose anything.
 
-> **Status:** work in progress. Done so far: project setup, env validation, logging, error format, CORS, first database schema with tests. The schema grows feature by feature, one migration per step — see the plan in [`docs/DATA-MODEL.md`](docs/DATA-MODEL.md). Full checklist in [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md).
+> **Status:** complete. Everything in the spec is built and tested: the durable agent loop, OpenRouter Free + vision model fallback cascade, skills loader, Magica tools (Crop Image, GPT Image 2, Merge Videos), human approvals/waitpoints, plan mode, streaming reasoning and text, credit ledger (reserve → settle / refund), Transloadit + permanent S3 storage, unified media library, signed webhooks with SSRF protection, Postgres-based rate limits, tool estimate endpoint, model discovery, and run status. All migrations are tracked in [`docs/MIGRATIONS.md`](docs/MIGRATIONS.md).
 
 ---
 
@@ -81,6 +81,8 @@ Check it's alive: `curl http://localhost:4000/api/v1/health` → `{"ok":true}`
 pnpm typecheck
 pnpm lint
 pnpm test
+pnpm docs:openapi   # rebuild api-docs/openapi.json
+pnpm sync:contracts # sync schemas to client/
 ```
 ⚠️ Tests in `tests/db/` write to the database in `DATABASE_URL`. Use a separate Neon branch for testing, not your main one.
 
@@ -120,6 +122,8 @@ Key subsystems:
 - **Uploads & Storage:** Client requests signed Transloadit params, uploads files directly, and backend stores them permanently in S3 using Transloadit S3 Template Credentials (with 24h temporary fallback when unconfigured). Files are tracked as attachments and exposed via the unified Media Library.
 - **Webhooks:** Optional webhooks for tool runs and agent runs with Stripe-style HMAC-SHA256 signatures (`X-Webhook-Signature: t=...,v1=...`), delivered asynchronously via Trigger.dev tasks with bounded retries, exponential backoff, and delivery-time DNS SSRF protection.
 - **Vision Model Fallback:** Free OpenRouter model routing automatically detects image attachments and routes requests through configured free vision models (`VISION_MODELS`) to avoid hallucinations.
+- **Rate Limits & Protection:** 20 messages/min and 10 tool runs/min per user, tracked in Postgres with composite indexes. Over limit returns 429 with computed `retryAfterSeconds` and `Retry-After` header.
+- **Credit Engine:** Append-only ledger tracks every reserve, charge, settle, and refund. Tools estimate live Magica pricing before reserving.
 
 **What happens when a user sends a message:**
 
@@ -143,6 +147,11 @@ Only decisions that are already in the code. This table grows as features are bu
 | Backend is a separate Next.js app with only route handlers | Trial needs two repos + REST via Next.js route handlers (confirmed on Slack) | Two deploys, CORS between them |
 | One active run per chat enforced by a **partial unique index** in Postgres | The DB guarantees it even with two tabs or two servers. App-level checks can race. | Raw SQL in the migration that Prisma doesn't know about — a test protects it |
 | Foreign keys with `ON DELETE RESTRICT`, soft delete planned via `deletedAt` | Nothing gets deleted by accident; history like runs is never lost | Delete logic (coming with chat management) must filter `deletedAt: null` |
+| Merged keyset cursor pagination for Media Library | Merges tool outputs (`ToolInvocation`) and user uploads (`Attachment`) by `(createdAt desc, id desc)` without duplicate entries from library reuses. | Merging two sorted streams in memory requires reading `limit + 1` from both tables per page |
+| Vision model fallback cascade for free tier | `openrouter/free` routes to text models that hallucinate when given images. We cascade through free vision models (`VISION_MODELS`) and reject any paid model at startup. | Sequential fallback can add 2–3s if the primary free vision model is busy |
+| Durable waitpoints via Trigger.dev tokens | Human approvals (options, plan review, credits) pause the agent turn with zero compute burn. Resuming is idempotent and picks up right where it stopped. | Active runs remain in Postgres status `waiting` until the user responds or the 24h timeout expires |
+| Append-only credit ledger (reserve → settle / refund) | Every single credit movement is traceable like a bank statement with its own idempotency key. Failed/cancelled runs refund cleanly. | Requires dual-write in transactions (user balance update + ledger entry) |
+| Search with Postgres `pg_trgm` GIN indexes | Fast substring and fuzzy search for chat titles and message text directly in Postgres with no extra service (like Elasticsearch or Algolia). | Trigram index updates add slight write overhead on long messages |
 
 ---
 ## What I'd improve with more time
