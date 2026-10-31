@@ -4,8 +4,6 @@ Backend for the Agent Chat clone (Magica / Galaxy work trial). Frontend lives in
 
 In short: the frontend sends a message, this backend saves it, starts a durable background run on **Trigger.dev**, and returns straight away. The agent then works in the background — talks to **OpenRouter Free**, loads **skills** when needed, calls **tools** (Crop Image, GPT Image 2, Merge Videos through the Magica API), asks the user for approval when required, and streams progress live. Everything is saved in **Postgres**, so a page reload or a dropped connection doesn't lose anything.
 
-> **Status:** work in progress. Done so far: project setup, env validation, logging, error format, CORS, first database schema with tests. The schema grows feature by feature, one migration per step — see the plan in [`docs/DATA-MODEL.md`](docs/DATA-MODEL.md). Full checklist in [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md).
-
 ---
 
 ## Tech stack
