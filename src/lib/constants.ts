@@ -134,7 +134,7 @@ export const HTTP_STATUS_BY_ERROR_CODE: Partial<Record<ErrorCode, number>> = {
   WAITPOINT_EXPIRED: 410,
 };
 export const CORS_ALLOWED_METHODS = "GET,POST,PATCH,DELETE,OPTIONS";
-export const CORS_ALLOWED_HEADERS = "Content-Type,Authorization";
+export const CORS_ALLOWED_HEADERS = "Content-Type,Authorization,x-source,X-Source";
 export const DB_CONNECT_ATTEMPT_TIMEOUT_MS = 2000;
 export const STARTUP_CHECK_TIMEOUT_MS = 15000;
 
