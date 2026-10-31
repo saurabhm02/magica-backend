@@ -464,6 +464,13 @@ export function generateOpenApiSpec(): Record<string, unknown> {
               description: "Number of runs to return (default 20, max 50)",
               schema: { type: "integer", minimum: 1, maximum: 50, default: 20 },
             },
+            {
+              name: "source",
+              in: "query",
+              required: false,
+              description: "Filter runs by origin (ui or api)",
+              schema: { type: "string", enum: ["ui", "api"] },
+            },
           ],
           responses: {
             ...jsonResponse(200, "Paginated tool runs history", ListToolRunsResponse),

@@ -264,6 +264,7 @@ describe("Magica API error handling", () => {
       error: null,
       credits: 0n,
       status: "running",
+      source: "ui",
       durationMs: null,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -319,6 +320,7 @@ describe("Magica API error handling", () => {
       error: null,
       credits: 0n,
       status: "running",
+      source: "ui",
       durationMs: null,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -385,6 +387,7 @@ describe("Trigger magica-run task idempotency", () => {
       error: null,
       credits: 0n,
       status: "running",
+      source: "ui",
       durationMs: null,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -929,6 +932,57 @@ describe("Direct tool runs (POST /v1/tools/:name/runs, GET /v1/tools/:name/runs,
 
     const bodyB = (await resB.json()) as { items: Array<Record<string, unknown>> };
     expect(bodyB.items.length).toBe(0);
+  });
+
+  it("GET /v1/tools/:name/runs filters by source=api and source=ui", async () => {
+    vi.spyOn(authModule, "requireUser").mockResolvedValue({
+      id: userA.id,
+      clerkUserId: "mock_a",
+      creditBalance: 500_000n,
+      createdAt: new Date(),
+    });
+
+    const invUi = await db.toolInvocation.create({
+      data: {
+        userId: userA.id,
+        runId: null,
+        toolCallId: `direct_filter_ui_${randomUUID()}`,
+        order: 0,
+        toolName: "crop_image",
+        status: "succeeded",
+        source: "ui",
+        input: { image_url: "https://example.com/pic.jpg" },
+        idempotencyKey: `idem_filter_ui_${randomUUID()}`,
+      },
+    });
+
+    const invApi = await db.toolInvocation.create({
+      data: {
+        userId: userA.id,
+        runId: null,
+        toolCallId: `direct_filter_api_${randomUUID()}`,
+        order: 0,
+        toolName: "crop_image",
+        status: "succeeded",
+        source: "api",
+        input: { image_url: "https://example.com/pic.jpg" },
+        idempotencyKey: `idem_filter_api_${randomUUID()}`,
+      },
+    });
+
+    const reqUi = new NextRequest("http://localhost:4000/v1/tools/crop_image/runs?source=ui");
+    const resUi = await getToolRunsRoute(reqUi, { params: Promise.resolve({ name: "crop_image" }) });
+    expect(resUi.status).toBe(200);
+    const bodyUi = (await resUi.json()) as { items: Array<{ runId: string; source: string }> };
+    expect(bodyUi.items.some((i) => i.runId === invUi.id)).toBe(true);
+    expect(bodyUi.items.some((i) => i.runId === invApi.id)).toBe(false);
+
+    const reqApi = new NextRequest("http://localhost:4000/v1/tools/crop_image/runs?source=api");
+    const resApi = await getToolRunsRoute(reqApi, { params: Promise.resolve({ name: "crop_image" }) });
+    expect(resApi.status).toBe(200);
+    const bodyApi = (await resApi.json()) as { items: Array<{ runId: string; source: string }> };
+    expect(bodyApi.items.some((i) => i.runId === invApi.id)).toBe(true);
+    expect(bodyApi.items.some((i) => i.runId === invUi.id)).toBe(false);
   });
 
   it("GET /v1/tool-runs/:id returns run status, mints reload token, and enforces ownership", async () => {

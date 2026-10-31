@@ -41,6 +41,11 @@ enum ToolStatus {
   cancelled
 }
 
+enum ToolRunSource {
+  ui
+  api
+}
+
 enum LedgerType {
   grant
   reserve
@@ -163,6 +168,7 @@ model ToolInvocation {
   order          Int
   toolName       String
   status         ToolStatus     @default(pending)
+  source         ToolRunSource  @default(ui)
   input          Json
   output         Json?
   magicaRunId    String?

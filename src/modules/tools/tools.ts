@@ -6,6 +6,7 @@ import type {
   ListToolRunsQuery,
   ListToolRunsResponse,
   ToolRunResponse,
+  ToolRunSource,
 } from "@/contracts/api";
 import type { SafeError } from "@/contracts/errors";
 import {
@@ -144,6 +145,7 @@ export async function startToolRun(
   toolName: string,
   rawInput: unknown,
   webhookConfig?: WebhookConfigInput,
+  source: ToolRunSource = "api",
 ): Promise<{
   runId: string;
   realtime: { runId: string; accessToken: string };
@@ -205,6 +207,7 @@ export async function startToolRun(
       order: 0,
       toolName: magicaTool.name,
       status: "pending",
+      source,
       input: parsed.data as Prisma.InputJsonValue,
       idempotencyKey: `tool_run_${randomUUID()}`,
     },
@@ -315,6 +318,7 @@ export async function listToolRuns(
     where: {
       userId,
       toolName: tool.name,
+      ...(query.source ? { source: query.source } : {}),
       ...(cursor ? { OR: afterCreatedAtIdCursor(cursor) } : {}),
     },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -330,6 +334,7 @@ export async function listToolRuns(
       runId: inv.id,
       toolName: inv.toolName,
       status: inv.status,
+      source: (inv.source as ToolRunSource) ?? "ui",
       credits: Number(inv.credits),
       output: inv.output as Record<string, unknown> | null,
       assets: assets.map((a) => ({ type: a.type, url: a.url })),
@@ -377,6 +382,7 @@ export async function getToolRun(userId: string, id: string): Promise<ToolRunRes
     realtime: inv.triggerRunId && accessToken ? { runId: inv.triggerRunId, accessToken } : undefined,
     toolName: inv.toolName,
     status: inv.status,
+    source: (inv.source as ToolRunSource) ?? "ui",
     output: inv.output as Record<string, unknown> | null,
     credits: Number(inv.credits),
     durationMs: inv.durationMs,

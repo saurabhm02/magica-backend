@@ -4903,6 +4903,19 @@
               "maximum": 50,
               "default": 20
             }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "description": "Filter runs by origin (ui or api)",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "ui",
+                "api"
+              ]
+            }
           }
         ],
         "responses": {
@@ -4932,6 +4945,14 @@
                               "succeeded",
                               "failed",
                               "cancelled"
+                            ]
+                          },
+                          "source": {
+                            "default": "ui",
+                            "type": "string",
+                            "enum": [
+                              "ui",
+                              "api"
                             ]
                           },
                           "credits": {
@@ -4980,6 +5001,7 @@
                           "runId",
                           "toolName",
                           "status",
+                          "source",
                           "credits",
                           "assets",
                           "createdAt"
@@ -5267,6 +5289,13 @@
                       "type": "string"
                     },
                     "additionalProperties": {}
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "ui",
+                      "api"
+                    ]
                   },
                   "webhook": {
                     "type": "object",
@@ -5759,6 +5788,14 @@
                         "cancelled"
                       ]
                     },
+                    "source": {
+                      "default": "ui",
+                      "type": "string",
+                      "enum": [
+                        "ui",
+                        "api"
+                      ]
+                    },
                     "output": {
                       "anyOf": [
                         {
@@ -5870,6 +5907,7 @@
                     "runId",
                     "toolName",
                     "status",
+                    "source",
                     "credits",
                     "assets",
                     "createdAt"

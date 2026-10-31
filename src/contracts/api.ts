@@ -280,8 +280,12 @@ export const EstimateToolResponse = z.object({
 });
 export type EstimateToolResponse = z.infer<typeof EstimateToolResponse>;
 
+export const ToolRunSource = z.enum(["ui", "api"]);
+export type ToolRunSource = z.infer<typeof ToolRunSource>;
+
 export const CreateToolRunRequest = z.object({
   input: z.record(z.string(), z.unknown()),
+  source: ToolRunSource.optional(),
   webhook: WebhookConfigInput.optional(),
 });
 export type CreateToolRunRequest = z.infer<typeof CreateToolRunRequest>;
@@ -316,6 +320,7 @@ export const ToolRunResponse = z.object({
     .optional(),
   toolName: z.string(),
   status: ToolStatus,
+  source: ToolRunSource.default("ui"),
   output: z.record(z.string(), z.unknown()).nullable().optional(),
   credits: z.number(),
   durationMs: z.number().nullable().optional(),
@@ -329,6 +334,7 @@ export const ToolRunHistoryItem = z.object({
   runId: z.string(),
   toolName: z.string(),
   status: ToolStatus,
+  source: ToolRunSource.default("ui"),
   credits: z.number(),
   output: z.record(z.string(), z.unknown()).nullable().optional(),
   assets: z.array(ToolRunAsset),
@@ -336,7 +342,9 @@ export const ToolRunHistoryItem = z.object({
 });
 export type ToolRunHistoryItem = z.infer<typeof ToolRunHistoryItem>;
 
-export const ListToolRunsQuery = CursorQuery;
+export const ListToolRunsQuery = CursorQuery.extend({
+  source: ToolRunSource.optional(),
+});
 export type ListToolRunsQuery = z.infer<typeof ListToolRunsQuery>;
 
 export const ListToolRunsResponse = Page(ToolRunHistoryItem);

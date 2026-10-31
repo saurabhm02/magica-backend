@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { CreateToolRunRequest, CreateToolRunResponse, ListToolRunsQuery, ListToolRunsResponse } from "@/contracts/api";
+import { CreateToolRunRequest, CreateToolRunResponse, ListToolRunsQuery, ListToolRunsResponse, ToolRunSource } from "@/contracts/api";
 import { parseInput, queryOf, readJson, route } from "@/lib/http";
 import { requireUser } from "@/lib/auth";
 import { listToolRuns, startToolRun } from "@/modules/tools/tools";
@@ -8,7 +8,11 @@ export const POST = route<{ params: Promise<{ name: string }> }>(async (req, { p
   const user = await requireUser(req);
   const { name } = await params;
   const body = parseInput(CreateToolRunRequest, await readJson(req));
-  const res = await startToolRun(user, name, body.input, body.webhook);
+  const headerSource = req.headers.get("x-source");
+  const source: ToolRunSource =
+    body.source ??
+    (headerSource === "ui" ? "ui" : headerSource === "api" ? "api" : "api");
+  const res = await startToolRun(user, name, body.input, body.webhook, source);
   return NextResponse.json(CreateToolRunResponse.parse(res));
 });
 
